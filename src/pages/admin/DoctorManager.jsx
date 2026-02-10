@@ -55,7 +55,7 @@ const DoctorManager = () => {
                         </div>
 
                         <div className="mt-auto flex justify-between items-center pt-4 border-t border-sage-50">
-                            <span className="font-bold text-sage-800">Rs. {doctor.price}</span>
+                            <span className="font-bold text-sage-800">₹{doctor.price}</span>
                             <div className="space-x-2">
                                 <Link to={`/admin/doctors/edit/${doctor.id}`}>
                                     <button className="p-2 text-sage-600 hover:bg-sage-100 rounded-md transition-colors">

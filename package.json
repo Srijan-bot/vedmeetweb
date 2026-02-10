@@ -17,6 +17,7 @@
     "framer-motion": "^12.23.25",
     "lottie-react": "^2.4.1",
     "lucide-react": "^0.555.0",
+    "maplibre-gl": "^5.15.0",
     "mappls-web-maps": "^3.8.0",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",

@@ -1,5 +1,6 @@
+
 import React, { useEffect, useState } from 'react';
-import { Package, AlertTriangle, Clock, DollarSign, ArrowUpRight, TrendingUp } from 'lucide-react';
+import { Package, AlertTriangle, Clock, IndianRupee, ArrowUpRight, TrendingUp } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend, AreaChart, Area } from 'recharts';
 import { getInventoryStats, getInventoryLedger, getAllVariants, getExpiringBatches } from '../../lib/data';
 
@@ -10,7 +11,7 @@ const StatCard = ({ title, value, subtext, icon: Icon, colorClass, barColor, bgC
                 <p className="text-stone-500 text-sm font-medium mb-1 uppercase tracking-wider">{title}</p>
                 <h3 className="text-3xl font-bold text-sage-900">{value}</h3>
             </div>
-            <div className={`p-3 rounded-full ${bgClass} ${textClass}`}>
+            <div className={`p - 3 rounded - full ${bgClass} ${textClass} `}>
                 <Icon size={24} />
             </div>
         </div>
@@ -18,7 +19,7 @@ const StatCard = ({ title, value, subtext, icon: Icon, colorClass, barColor, bgC
         {/* Decorative Mini Bar Chart */}
         <div className="flex items-end gap-1 h-8 absolute bottom-6 right-6 opacity-30">
             {[40, 70, 50, 90, 60].map((h, i) => (
-                <div key={i} style={{ height: `${h}%` }} className={`w-1.5 rounded-t-sm ${barColor}`}></div>
+                <div key={i} style={{ height: `${h}% ` }} className={`w - 1.5 rounded - t - sm ${barColor} `}></div>
             ))}
         </div>
     </div>
@@ -50,7 +51,11 @@ const InventoryReports = () => {
             ]);
 
             // 1. Process Stats
-            const lowStockCount = variants.filter(v => v.stock_quantity <= (v.min_stock_level || 10)).length;
+            const lowStockCount = variants.filter(v => {
+                const stock = parseInt(v.stock_quantity || 0);
+                const min = parseInt(v.min_stock_level) || 10;
+                return stock <= min;
+            }).length;
 
             // asset_value comes from getInventoryStats which sums (qty * cost) from batch stock
             const inventoryValue = statsRaw.asset_value || 0;
@@ -71,14 +76,14 @@ const InventoryReports = () => {
             const today = new Date();
             for (let i = 5; i >= 0; i--) {
                 const d = new Date(today.getFullYear(), today.getMonth() - i, 1);
-                const key = `${months[d.getMonth()]} ${d.getFullYear()}`; // "Jan 2024"
+                const key = `${months[d.getMonth()]} ${d.getFullYear()} `; // "Jan 2024"
                 const shortKey = months[d.getMonth()];
                 stockFlowMap[key] = { name: shortKey, fullDate: d, in: 0, out: 0, sortVal: d.getTime() };
             }
 
             ledger.forEach(entry => {
                 const date = new Date(entry.transaction_date);
-                const key = `${months[date.getMonth()]} ${date.getFullYear()}`;
+                const key = `${months[date.getMonth()]} ${date.getFullYear()} `;
 
                 // If this month is not initialized (older than 6 months or future?), maybe skip or add?
                 // For simplicity, we only track if it matches our map or if we want to expand dynamic range.
@@ -126,7 +131,7 @@ const InventoryReports = () => {
             // Using same months loop but we need to track value changes per month
             ledger.forEach(entry => {
                 const date = new Date(entry.transaction_date);
-                const key = `${months[date.getMonth()]} ${date.getFullYear()}`;
+                const key = `${months[date.getMonth()]} ${date.getFullYear()} `;
 
                 if (!trendMap[key]) trendMap[key] = 0;
 
@@ -163,7 +168,7 @@ const InventoryReports = () => {
             // Loop last 6 months backwards
             for (let i = 0; i < 6; i++) {
                 const d = new Date(today.getFullYear(), today.getMonth() - i, 1);
-                const key = `${months[d.getMonth()]} ${d.getFullYear()}`;
+                const key = `${months[d.getMonth()]} ${d.getFullYear()} `;
                 const netChange = trendMap[key] || 0;
 
                 trendData.unshift({
@@ -230,8 +235,8 @@ const InventoryReports = () => {
                 />
                 <StatCard
                     title="Inventory Value"
-                    value={`$${(stats.inventoryValue / 1000).toFixed(1)}k`}
-                    icon={DollarSign}
+                    value={`₹${(stats.inventoryValue / 1000).toFixed(1)} k`}
+                    icon={IndianRupee}
                     bgClass="bg-emerald-100"
                     textClass="text-emerald-600"
                     barColor="bg-emerald-500"
@@ -281,7 +286,7 @@ const InventoryReports = () => {
                                     dataKey="value"
                                 >
                                     {chartData.categoryDist.map((entry, index) => (
-                                        <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                                        <Cell key={`cell - ${index} `} fill={COLORS[index % COLORS.length]} />
                                     ))}
                                 </Pie>
                                 <Tooltip
@@ -313,7 +318,7 @@ const InventoryReports = () => {
                                 <YAxis stroke="#64748b" tick={{ fill: '#64748b' }} axisLine={false} tickLine={false} />
                                 <Tooltip
                                     contentStyle={{ backgroundColor: '#ffffff', borderColor: '#e2e8f0', color: '#1e293b' }}
-                                    formatter={(value) => [`$${(value / 1000).toFixed(1)}k`, 'Value']}
+                                    formatter={(value) => [`₹${(value / 1000).toFixed(1)} k`, 'Value']}
                                 />
                                 <Area type="monotone" dataKey="value" stroke="#8B5CF6" fillOpacity={1} fill="url(#colorValue)" />
                             </AreaChart>

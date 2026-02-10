@@ -15,8 +15,16 @@ const BatchInwardModal = ({ isOpen, onClose, onSuccess }) => {
         expiry_date: '',
         cost_price: '',
         quantity: '',
-        reason: 'Regular Purchase'
+        reason: 'Purchase',
+        otherReason: '',
+        hsn_code: '',
+        gst_rate: ''
     });
+
+    const selectedVariant = variants.find(v => v.id === formData.variant_id);
+    const productType = selectedVariant?.products?.product_type || 'Cosmetic';
+    const isMedicine = productType === 'Medicine';
+    const isConsumable = productType === 'Consumable' || productType === 'Medicine'; // Medicines are also consumables in terms of expiry
 
     useEffect(() => {
         if (isOpen) {
@@ -52,6 +60,7 @@ const BatchInwardModal = ({ isOpen, onClose, onSuccess }) => {
         try {
             await inwardStock({
                 ...formData,
+                reason: formData.reason === 'Other' ? formData.otherReason : formData.reason,
                 quantity: parseInt(formData.quantity),
                 cost_price: parseFloat(formData.cost_price)
             });
@@ -77,7 +86,8 @@ const BatchInwardModal = ({ isOpen, onClose, onSuccess }) => {
 
     if (!isOpen) return null;
 
-    const selectedVariant = variants.find(v => v.id === formData.variant_id);
+    // Moved selectedVariant definition up for state usage
+    // const selectedVariant = variants.find(v => v.id === formData.variant_id);
 
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
@@ -103,8 +113,13 @@ const BatchInwardModal = ({ isOpen, onClose, onSuccess }) => {
                                     setFormData({ ...formData, variant_id: e.target.value });
                                     // Auto-fill cost price if relevant from variant history?
                                     const v = variants.find(v => v.id === e.target.value);
-                                    if (v && v.cost_price) {
-                                        setFormData(prev => ({ ...prev, cost_price: v.cost_price || '' }));
+                                    if (v) {
+                                        setFormData(prev => ({
+                                            ...prev,
+                                            cost_price: v.cost_price || '',
+                                            hsn_code: v.products?.hsn_code || '',
+                                            gst_rate: v.products?.gst_rate || ''
+                                        }));
                                     }
                                 }}
                             >
@@ -132,12 +147,15 @@ const BatchInwardModal = ({ isOpen, onClose, onSuccess }) => {
                         </div>
 
                         <div>
-                            <label className="block text-sm font-medium text-sage-700 mb-1">Batch Number</label>
+                            <label className="block text-sm font-medium text-sage-700 mb-1">
+                                Batch Number {isMedicine && <span className="text-red-500">*</span>}
+                            </label>
                             <div className="relative">
                                 <Package className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
                                 <input
                                     type="text"
-                                    required
+                                    required={isMedicine}
+                                    placeholder={!isMedicine ? "Auto-generated if empty" : "Required"}
                                     className="w-full border border-gray-300 rounded-lg pl-10 pr-3 py-2.5 focus:ring-2 focus:ring-sage-500 outline-none"
                                     value={formData.batch_number}
                                     onChange={e => setFormData({ ...formData, batch_number: e.target.value })}
@@ -146,13 +164,15 @@ const BatchInwardModal = ({ isOpen, onClose, onSuccess }) => {
                         </div>
 
                         <div>
-                            <label className="block text-sm font-medium text-sage-700 mb-1">Expiry Date</label>
+                            <label className="block text-sm font-medium text-sage-700 mb-1">
+                                Expiry Date {isConsumable && <span className="text-red-500">*</span>}
+                            </label>
                             <div className="relative">
                                 <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
                                 <input
                                     type="date"
-                                    required
-                                    className="w-full border border-gray-300 rounded-lg pl-10 pr-3 py-2.5 focus:ring-2 focus:ring-sage-500 outline-none"
+                                    required={isConsumable}
+                                    className={`w-full border rounded-lg pl-10 pr-3 py-2.5 focus:ring-2 focus:ring-sage-500 outline-none ${isConsumable && !formData.expiry_date ? 'border-red-300' : 'border-gray-300'}`}
                                     value={formData.expiry_date}
                                     onChange={e => setFormData({ ...formData, expiry_date: e.target.value })}
                                 />
@@ -188,14 +208,55 @@ const BatchInwardModal = ({ isOpen, onClose, onSuccess }) => {
                         </div>
 
                         <div>
-                            <label className="block text-sm font-medium text-sage-700 mb-1">Reason / PO Ref</label>
+                            <label className="block text-sm font-medium text-sage-700 mb-1">Reason</label>
+                            <select
+                                className="w-full border border-gray-300 rounded-lg px-3 py-2.5 focus:ring-2 focus:ring-sage-500 outline-none bg-white mb-2"
+                                value={formData.reason}
+                                onChange={e => setFormData({ ...formData, reason: e.target.value })}
+                            >
+                                <option value="Purchase">Purchase</option>
+                                <option value="Opening Stock">Opening Stock</option>
+                                <option value="Return">Customer Return</option>
+                                <option value="Transfer">Transfer In</option>
+                                <option value="Other">Other</option>
+                            </select>
+                            {formData.reason === 'Other' && (
+                                <input
+                                    type="text"
+                                    required
+                                    className="w-full border border-gray-300 rounded-lg px-3 py-2.5 focus:ring-2 focus:ring-sage-500 outline-none"
+                                    value={formData.otherReason}
+                                    onChange={e => setFormData({ ...formData, otherReason: e.target.value })}
+                                    placeholder="Specify reason..."
+                                />
+                            )}
+                        </div>
+
+                        <div>
+                            <label className="block text-sm font-medium text-sage-700 mb-1">HSN Code</label>
                             <input
                                 type="text"
                                 className="w-full border border-gray-300 rounded-lg px-3 py-2.5 focus:ring-2 focus:ring-sage-500 outline-none"
-                                value={formData.reason}
-                                onChange={e => setFormData({ ...formData, reason: e.target.value })}
-                                placeholder="PO-1234 or Purchase"
+                                value={formData.hsn_code}
+                                onChange={e => setFormData({ ...formData, hsn_code: e.target.value })}
+                                placeholder="e.g. 3004"
                             />
+                        </div>
+
+                        <div>
+                            <label className="block text-sm font-medium text-sage-700 mb-1">GST Rate (%)</label>
+                            <select
+                                className="w-full border border-gray-300 rounded-lg px-3 py-2.5 focus:ring-2 focus:ring-sage-500 outline-none bg-white"
+                                value={formData.gst_rate}
+                                onChange={e => setFormData({ ...formData, gst_rate: e.target.value })}
+                            >
+                                <option value="">Select GST Rate...</option>
+                                <option value="0">0% (Nil)</option>
+                                <option value="5">5%</option>
+                                <option value="12">12%</option>
+                                <option value="18">18%</option>
+                                <option value="28">28%</option>
+                            </select>
                         </div>
                     </div>
 
@@ -209,7 +270,13 @@ const BatchInwardModal = ({ isOpen, onClose, onSuccess }) => {
                                     You are adding <strong>{formData.quantity || 0}</strong> units of <strong>{selectedVariant.name}</strong> to <strong>Batch {formData.batch_number}</strong>.
                                 </p>
                                 <p className="text-sm text-blue-700">
-                                    Total Value: <strong>₹{((parseFloat(formData.cost_price) || 0) * (parseInt(formData.quantity) || 0)).toFixed(2)}</strong>
+                                    Base Value: <strong>₹{((parseFloat(formData.cost_price) || 0) * (parseInt(formData.quantity) || 0)).toFixed(2)}</strong>
+                                    {formData.gst_rate && (
+                                        <>
+                                            <span className="mx-2">+</span>
+                                            Tax ({formData.gst_rate}%): <strong>₹{(((parseFloat(formData.cost_price) || 0) * (parseInt(formData.quantity) || 0)) * (parseFloat(formData.gst_rate) / 100)).toFixed(2)}</strong>
+                                        </>
+                                    )}
                                 </p>
                             </div>
                         </div>

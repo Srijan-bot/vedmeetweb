@@ -1,10 +1,11 @@
 import React, { useState } from 'react';
 import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, Package, Stethoscope, FileText, Settings, LogOut, Menu, X, Users, Tag, Calendar, ClipboardList } from 'lucide-react';
-import { supabase } from '../../lib/supabase';
-import Button from '../../components/Button';
+import { LayoutDashboard, Package, Stethoscope, FileText, Settings, LogOut, Menu, X, Users, Tag, Calendar, ClipboardList, Briefcase } from 'lucide-react';
+import { supabase } from 'src/lib/supabase';
+import Button from 'src/components/Button';
+import AgentOnboardingModal from 'src/components/AgentOnboardingModal';
 
-import NotificationBell from '../../components/NotificationBell';
+import NotificationBell from 'src/components/NotificationBell';
 
 const DashboardLayout = () => {
     const location = useLocation();
@@ -33,12 +34,13 @@ const DashboardLayout = () => {
     };
 
     const allNavItems = [
-        { path: '/admin/dashboard', icon: LayoutDashboard, label: 'Overview', roles: ['admin', 'seo_writer'] },
+        { path: '/admin/dashboard', icon: LayoutDashboard, label: 'Overview', roles: ['admin', 'seo_writer', 'agent'] },
         // Orders and Inventory moved to Dashboard Overview
-        { path: '/admin/products', icon: Package, label: 'Products', roles: ['admin', 'seo_writer'] },
+        { path: '/admin/products', icon: Package, label: 'Products', roles: ['admin', 'seo_writer', 'agent'] },
         { path: '/admin/offers', icon: Tag, label: 'Offers', roles: ['admin'] },
         { path: '/admin/brands', icon: Tag, label: 'Brands', roles: ['admin'] },
         { path: '/admin/leads', icon: Users, label: 'Leads', roles: ['admin'] },
+        //{ path: '/admin/partners', icon: Briefcase, label: 'Partners', roles: ['admin'] },
         { path: '/admin/prescriptions', icon: FileText, label: 'Prescriptions', roles: ['admin', 'doctor'] },
         { path: '/admin/appointments', icon: Calendar, label: 'Appointments', roles: ['admin', 'doctor'] },
         { path: '/admin/doctors', icon: Stethoscope, label: 'Doctors', roles: ['admin'] },
@@ -52,6 +54,7 @@ const DashboardLayout = () => {
 
     return (
         <div className="h-screen bg-sage-50 flex overflow-hidden">
+            <AgentOnboardingModal />
             {/* Sidebar */}
             <aside
                 className={`fixed inset-y-0 left-0 z-50 w-64 bg-sage-900 text-white transform transition-transform duration-300 ease-in-out md:static md:translate-x-0 ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'

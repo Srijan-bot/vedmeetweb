@@ -6,13 +6,14 @@ import Button from '../components/Button';
 import { getProducts, getSiteSettings, getCategories, getBlogs } from '../lib/data';
 import LeadModal from '../components/LeadModal';
 import { useCart } from '../context/CartContext';
+import heroImg from '../assets/hero.png';
+import goldenSeal from '../assets/golden-seal.png';
 
 const Home = () => {
     const [featuredProducts, setFeaturedProducts] = useState([]);
     const [categories, setCategories] = useState([]);
     const [blogs, setBlogs] = useState([]);
     const [heroData, setHeroData] = useState({
-        hero_image: 'https://images.unsplash.com/photo-1606893603348-12c5b3b72c49?auto=format&fit=crop&q=80&w=2000',
         hero_title: 'Pure Ayurveda,\nDelivered.',
         hero_subtitle: 'Authentic Ayurvedic remedies from India\'s most trusted brands, delivered to your doorstep.'
     });
@@ -26,13 +27,13 @@ const Home = () => {
             setFeaturedProducts(products.slice(0, 4));
 
             const cats = await getCategories();
-            setCategories(cats.slice(0, 3));
+            setCategories(cats || []);
 
             const blogPosts = await getBlogs();
             setBlogs(blogPosts.slice(0, 3));
 
             const settings = await getSiteSettings();
-            if (settings.hero_image) {
+            if (settings.hero_title) {
                 setHeroData(prev => ({ ...prev, ...settings }));
             }
         };
@@ -53,11 +54,11 @@ const Home = () => {
             <section className="relative h-[90vh] flex items-center overflow-hidden">
                 <div className="absolute inset-0 z-0">
                     <img
-                        src={heroData.hero_image}
+                        src={heroImg}
                         alt="Ayurvedic Wellness"
                         className="w-full h-full object-cover"
                     />
-                    <div className="absolute inset-0 bg-black/30 w-full h-full" />
+                    <div className="absolute inset-0 bg-black/40 w-full h-full" />
                     {/* Gradient Overlay for Text Readability */}
                     <div className="absolute inset-0 bg-gradient-to-r from-black/60 via-transparent to-transparent" />
                 </div>
@@ -130,18 +131,19 @@ const Home = () => {
                     </Link>
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                    {categories.map((category) => (
-                        <Link key={category.id} to={`/shop?category=${category.id}`} className="group relative aspect-[4/3] overflow-hidden rounded-2xl cursor-pointer">
+                {/* Categories: Mobile Carousel / Desktop Grid */}
+                <div className="flex overflow-x-auto snap-x snap-mandatory gap-4 pb-4 -mx-6 px-6 md:grid md:grid-cols-3 md:gap-6 md:pb-0 md:mx-0 md:px-0 scrollbar-hide">
+                    {categories.slice(0, 3).map((category) => (
+                        <Link key={category.id} to={`/shop?category=${category.id}`} className="shrink-0 w-[85vw] md:w-auto md:shrink snap-center group relative aspect-[4/3] overflow-hidden rounded-2xl cursor-pointer shadow-sm">
                             <img
                                 src={category.image}
                                 alt={category.name}
                                 className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
                             />
                             <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent opacity-80" />
-                            <div className="absolute bottom-0 left-0 p-6 w-full">
-                                <h3 className="text-2xl font-serif font-bold text-white mb-1">{category.name}</h3>
-                                <span className="text-saffron-400 text-sm font-medium flex items-center gap-2 opacity-0 -translate-y-2 group-hover:opacity-100 group-hover:translate-y-0 transition-all duration-300">
+                            <div className="absolute bottom-0 left-0 p-4 md:p-6 w-full">
+                                <h3 className="text-xl md:text-2xl font-serif font-bold text-white mb-1">{category.name}</h3>
+                                <span className="text-saffron-400 text-sm font-medium flex items-center gap-2 md:opacity-0 md:-translate-y-2 group-hover:opacity-100 group-hover:translate-y-0 transition-all duration-300">
                                     Explore <ArrowRight className="w-3 h-3" />
                                 </span>
                             </div>
@@ -159,10 +161,11 @@ const Home = () => {
                         <p className="text-stone-600">Discover the most popular ayurvedic solutions trusted by our community.</p>
                     </div>
 
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8">
+                    {/* Products: Mobile 2x2 Grid / Desktop 4col */}
+                    <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-3 md:gap-8">
                         {featuredProducts.map((product) => (
                             <div key={product.id} className="group bg-white rounded-xl overflow-hidden shadow-sm hover:shadow-xl transition-all duration-300 flex flex-col">
-                                <div className="relative h-64 overflow-hidden bg-gray-100">
+                                <div className="relative h-40 md:h-64 overflow-hidden bg-gray-100">
                                     <Link to={`/product/${product.id}`}>
                                         <img
                                             src={product.image}
@@ -171,49 +174,67 @@ const Home = () => {
                                         />
                                     </Link>
                                     {/* Badges */}
-                                    <div className="absolute top-3 left-3 flex flex-col gap-1">
+                                    <div className="absolute top-2 left-2 md:top-3 md:left-3 flex flex-col gap-1">
                                         {product.discount_percentage > 0 && (
-                                            <span className="bg-saffron-500 text-white text-[10px] uppercase font-bold px-2 py-1 rounded shadow-sm">
+                                            <span className="bg-saffron-500 text-white text-[10px] uppercase font-bold px-1.5 py-0.5 md:px-2 md:py-1 rounded shadow-sm">
                                                 -{product.discount_percentage}%
                                             </span>
                                         )}
-                                        {product.rating >= 4.5 && (
-                                            <span className="bg-white/90 backdrop-blur text-sage-800 text-[10px] uppercase font-bold px-2 py-1 rounded shadow-sm flex items-center gap-1">
-                                                <Star className="w-3 h-3 fill-yellow-400 text-yellow-400" /> Top Rated
-                                            </span>
-                                        )}
                                     </div>
-                                    {/* Quick Add Button */}
+                                    {/* Quick Add Button (Desktop Only) */}
                                     <button
                                         onClick={(e) => {
                                             e.preventDefault();
                                             addToCart(product);
                                         }}
-                                        className="absolute bottom-3 right-3 bg-white text-sage-900 p-2.5 rounded-full shadow-lg opacity-0 translate-y-4 group-hover:opacity-100 group-hover:translate-y-0 transition-all duration-300 hover:bg-sage-900 hover:text-white"
+                                        className="hidden md:block absolute bottom-3 right-3 bg-white text-sage-900 p-2.5 rounded-full shadow-lg opacity-0 translate-y-4 group-hover:opacity-100 group-hover:translate-y-0 transition-all duration-300 hover:bg-sage-900 hover:text-white"
                                         title="Add to Cart"
                                     >
                                         <Truck className="w-4 h-4" />
                                     </button>
+
+                                    {/* Mobile Quick Add (Always Visible or Corner) */}
+                                    <button
+                                        onClick={(e) => {
+                                            e.preventDefault();
+                                            addToCart(product);
+                                        }}
+                                        className="md:hidden absolute bottom-2 right-2 bg-white/90 text-sage-900 p-2 rounded-full shadow-sm border border-stone-100"
+                                    >
+                                        <Truck className="w-3 h-3" />
+                                    </button>
                                 </div>
-                                <div className="p-5 flex flex-col flex-1">
-                                    <div className="text-[10px] text-saffron-600 font-semibold uppercase tracking-wider mb-1">{product.category}</div>
+                                <div className="p-3 md:p-5 flex flex-col flex-1">
+                                    <div className="text-[9px] md:text-[10px] text-saffron-600 font-semibold uppercase tracking-wider mb-1 truncate">
+                                        {(() => {
+                                            // Handle array or string category
+                                            const catId = Array.isArray(product.category) ? product.category[0] : product.category;
+                                            // Lookup name
+                                            const cat = categories.find(c => c.id === catId || c.name === catId);
+                                            return cat ? cat.name : (catId || 'Unknown Category');
+                                        })()}
+                                    </div>
                                     <Link to={`/product/${product.id}`}>
-                                        <h3 className="text-base font-serif font-bold text-sage-900 mb-1 truncate group-hover:text-saffron-600 transition-colors">{product.name}</h3>
+                                        <h3 className="text-sm md:text-base font-serif font-bold text-sage-900 mb-1 line-clamp-2 md:truncate group-hover:text-saffron-600 transition-colors">{product.name}</h3>
                                     </Link>
-                                    <div className="mt-auto pt-3 border-t border-gray-100 flex items-center justify-between">
+                                    <div className="mt-auto pt-2 md:pt-3 border-t border-gray-100 flex items-center justify-between">
                                         <div className="flex flex-col">
                                             {product.discount_percentage > 0 ? (
                                                 <>
-                                                    <span className="text-xs text-stone-400 line-through">₹{product.price}</span>
-                                                    <span className="text-base font-bold text-sage-900">₹{product.disc_price}</span>
+                                                    <span className="text-[10px] md:text-xs text-stone-400 line-through">₹{Math.round(product.price)}</span>
+                                                    <span className="text-sm md:text-base font-bold text-sage-900">₹{Math.round(product.disc_price)}</span>
                                                 </>
                                             ) : (
-                                                <span className="text-base font-bold text-sage-900">₹{product.price}</span>
+                                                <span className="text-sm md:text-base font-bold text-sage-900">₹{Math.round(product.price)}</span>
                                             )}
                                         </div>
-                                        <div className="flex items-center gap-1 text-xs text-stone-500">
-                                            <Star className="w-3 h-3 fill-yellow-400 text-yellow-400" />
-                                            {product.rating || 4.8}
+                                        <div className="flex items-center gap-1 text-[10px] md:text-xs text-stone-500">
+                                            {product.rating > 0 && product.reviews > 0 && (
+                                                <>
+                                                    <Star className="w-3 h-3 fill-yellow-400 text-yellow-400" />
+                                                    {product.rating.toFixed(1)}
+                                                </>
+                                            )}
                                         </div>
                                     </div>
                                 </div>
@@ -237,9 +258,8 @@ const Home = () => {
                     <div className="grid grid-cols-1 lg:grid-cols-2 gap-16 items-center">
                         <div className="relative">
                             <div className="absolute -top-10 -left-10 w-32 h-32 bg-saffron-500/20 rounded-full blur-3xl" />
-                            <div className="relative z-10 grid grid-cols-2 gap-4">
-                                <img src="https://images.unsplash.com/photo-1540420773420-3366772f4999?auto=format&fit=crop&q=80&w=800" alt="Ingredients" className="rounded-2xl shadow-2xl mt-8" />
-                                <img src="https://images.unsplash.com/photo-1515377905703-c4788e51af15?auto=format&fit=crop&q=80&w=800" alt="Process" className="rounded-2xl shadow-2xl" />
+                            <div className="relative z-10 flex justify-center items-center">
+                                <img src={goldenSeal} alt="Golden Seal of Purity" className="w-full max-w-sm drop-shadow-2xl animate-pulse-slow object-contain" />
                             </div>
                         </div>
                         <div className="space-y-8">

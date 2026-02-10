@@ -87,7 +87,7 @@ export const usePrescriptions = () => {
             // Fetch items (medicines)
             const { data: items, error: iError } = await supabase
                 .from('prescription_items')
-                .select('*, product:medicine_id(*)') // Join with products
+                .select('*, product:medicine_id(*), variant:variant_id(*)') // Join with products and variants
                 .eq('prescription_id', id);
             if (iError) throw iError;
 
@@ -214,6 +214,8 @@ export const usePrescriptions = () => {
             const itemsToInsert = items.map(item => ({
                 prescription_id: prescriptionId,
                 medicine_id: item.medicine_id,
+                variant_id: item.variant_id, // Add variant_id
+                quantity: item.quantity,     // Add quantity
                 is_alternative: item.is_alternative,
                 doctor_note: item.doctor_note
             }));

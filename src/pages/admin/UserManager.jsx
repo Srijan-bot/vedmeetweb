@@ -84,7 +84,7 @@ const UserManager = () => {
             // 1. Create a temporary client to sign up without affecting current session
             const tempSupabase = createClient(
                 import.meta.env.VITE_SUPABASE_URL,
-                import.meta.env.VITE_SUPABASE_ANON_KEY,
+                import.meta.env.VITE_SUPABASE_ANON_KEY?.trim(),
                 { auth: { persistSession: false } }
             );
 
@@ -92,6 +92,11 @@ const UserManager = () => {
             const { data, error } = await tempSupabase.auth.signUp({
                 email: newUser.email,
                 password: newUser.password,
+                options: {
+                    data: {
+                        admin_created: true
+                    }
+                }
             });
 
             if (error) throw error;
@@ -208,6 +213,7 @@ const UserManager = () => {
                                     <option value="doctor">Doctor</option>
                                     <option value="seo_writer">SEO Writer</option>
                                     <option value="admin">Admin</option>
+                                    <option value="agent">Agent</option>
                                 </select>
                             </div>
 
@@ -298,11 +304,13 @@ const UserManager = () => {
                                             <option value="doctor">Doctor</option>
                                             <option value="seo_writer">SEO Writer</option>
                                             <option value="admin">Admin</option>
+                                            <option value="agent">Agent</option>
                                         </select>
                                     ) : (
                                         <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold uppercase tracking-wide border ${user.role === 'admin' ? 'bg-purple-100 text-purple-700 border-purple-200' :
                                             user.role === 'seo_writer' ? 'bg-blue-100 text-blue-700 border-blue-200' :
-                                                'bg-stone-100 text-stone-600 border-stone-200'
+                                                user.role === 'agent' ? 'bg-orange-100 text-orange-700 border-orange-200' :
+                                                    'bg-stone-100 text-stone-600 border-stone-200'
                                             }`}>
                                             <Shield size={10} />
                                             {user.role || 'user'}

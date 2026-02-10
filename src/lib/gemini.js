@@ -34,8 +34,8 @@ export const generateProductContent = async (baseInfo) => {
 
     try {
         const genAI = new GoogleGenerativeAI(API_KEY);
-        // Using the experimental model as requested
-        const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash-exp" });
+        // Using the latest flash model which is supported
+        const model = genAI.getGenerativeModel({ model: "gemini-flash-latest" });
 
         const prompt = `
             You are an expert copywriter for a premium Ayurvedic e-commerce brand.
@@ -47,10 +47,14 @@ export const generateProductContent = async (baseInfo) => {
 
             Please output ONLY a valid JSON object with the following fields:
             - description: A compelling, 2-3 sentence marketing description suitable for a premium product.
+            - short_description: A concise 1-sentence summary (max 150 chars).
             - features: A string with 3-4 key features, separated by newlines.
             - ingredients: A string listing 3-5 key ayurvedic ingredients, separated by commas.
             - benefits: A string with 3-4 clear health benefits, separated by newlines.
             - usage: A concise instruction on how to use the product.
+            - seo_title: An SEO-optimized title (max 60 chars).
+            - meta_keywords: A comma-separated list of 5-8 relevant SEO keywords.
+            - meta_description: An SEO-optimized description (max 160 chars).
 
             Do not wrap the JSON in markdown code blocks. Just return the raw JSON string.
         `;

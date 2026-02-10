@@ -125,7 +125,7 @@ const InventoryAccounting = () => {
                     <div className="flex justify-between items-start mb-4">
                         <div>
                             <p className="text-stone-500 text-sm font-medium uppercase tracking-wider">Inventory Asset Value</p>
-                            <h3 className="text-2xl font-bold text-sage-900 mt-1">Rs. {stats.inventory_val.toLocaleString()}</h3>
+                            <h3 className="text-2xl font-bold text-sage-900 mt-1">₹{stats.inventory_val.toLocaleString()}</h3>
                         </div>
                         <div className="p-3 bg-purple-100 rounded-full">
                             <Scale className="w-6 h-6 text-purple-600" />
@@ -138,7 +138,7 @@ const InventoryAccounting = () => {
                     <div className="flex justify-between items-start mb-4">
                         <div>
                             <p className="text-stone-500 text-sm font-medium uppercase tracking-wider">COGS (This Month)</p>
-                            <h3 className="text-2xl font-bold text-sage-900 mt-1">Rs. {stats.cogs.toLocaleString()}</h3>
+                            <h3 className="text-2xl font-bold text-sage-900 mt-1">₹{stats.cogs.toLocaleString()}</h3>
                         </div>
                         <div className="p-3 bg-blue-100 rounded-full">
                             <BadgeDollarSign className="w-6 h-6 text-blue-600" />
@@ -151,7 +151,7 @@ const InventoryAccounting = () => {
                     <div className="flex justify-between items-start mb-4">
                         <div>
                             <p className="text-stone-500 text-sm font-medium uppercase tracking-wider">Est. Revenue Potential</p>
-                            <h3 className="text-2xl font-bold text-sage-900 mt-1">Rs. {stats.revenue_potential.toLocaleString()}</h3>
+                            <h3 className="text-2xl font-bold text-sage-900 mt-1">₹{stats.revenue_potential.toLocaleString()}</h3>
                         </div>
                         <div className="p-3 bg-emerald-100 rounded-full">
                             <TrendingUp className="w-6 h-6 text-emerald-600" />
@@ -175,21 +175,22 @@ const InventoryAccounting = () => {
                                 <th className="px-6 py-4">Note / Description</th>
                                 <th className="px-6 py-4">Type</th>
                                 <th className="px-6 py-4">Related To</th>
+                                <th className="px-6 py-4">Tags</th>
                                 <th className="px-6 py-4 text-right">Amount</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-sage-100">
                             {loading ? (
                                 <tr>
-                                    <td colSpan="5" className="px-6 py-4 text-center text-stone-500">Loading ledger...</td>
+                                    <td colSpan="6" className="px-6 py-4 text-center text-stone-500">Loading ledger...</td>
                                 </tr>
                             ) : ledgerEntries.length === 0 ? (
                                 <tr>
-                                    <td colSpan="5" className="px-6 py-4 text-center text-stone-500">No transactions yet.</td>
+                                    <td colSpan="6" className="px-6 py-4 text-center text-stone-500">No transactions yet.</td>
                                 </tr>
                             ) : (
                                 ledgerEntries.map((entry) => (
-                                    <tr key={entry.id} className="hover:bg-sage-50 transition-colors">
+                                    <tr key={entry.id} className="hover:bg-sage-50 transition-colors group">
                                         <td className="px-6 py-4 text-sm text-sage-700">{entry.date}</td>
                                         <td className="px-6 py-4 text-sm text-sage-900 font-medium">{entry.description}</td>
                                         <td className="px-6 py-4">
@@ -200,6 +201,26 @@ const InventoryAccounting = () => {
                                             </span>
                                         </td>
                                         <td className="px-6 py-4 text-sm text-stone-500 capitalize">{entry.related_to}</td>
+                                        <td className="px-6 py-4 text-sm">
+                                            <div className="flex flex-wrap gap-1">
+                                                {entry.tags && entry.tags.map((tag, i) => (
+                                                    <span key={i} className="px-1.5 py-0.5 bg-gray-100 text-gray-600 rounded text-xs border border-gray-200">{tag}</span>
+                                                ))}
+                                                <button
+                                                    onClick={async () => {
+                                                        const newTags = prompt("Enter tags separated by comma (e.g. Taxable, Urgent):", entry.tags?.join(', '));
+                                                        if (newTags !== null) {
+                                                            const tagsArray = newTags.split(',').map(t => t.trim()).filter(Boolean);
+                                                            const { error } = await supabase.from('accounting_ledger').update({ tags: tagsArray }).eq('id', entry.id);
+                                                            if (!error) fetchLedger(); // Refresh
+                                                        }
+                                                    }}
+                                                    className="opacity-0 group-hover:opacity-100 text-xs text-blue-500 hover:underline px-1"
+                                                >
+                                                    + Tag
+                                                </button>
+                                            </div>
+                                        </td>
                                         <td className={`px-6 py-4 text-right font-mono font-bold ${entry.amount > 0 ? 'text-emerald-600' : 'text-red-600'}`}>
                                             {entry.amount > 0 ? '+' : ''}{entry.amount.toFixed(2)}
                                         </td>

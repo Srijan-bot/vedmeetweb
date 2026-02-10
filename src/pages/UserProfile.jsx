@@ -9,6 +9,7 @@ import { usePrescriptions } from '../hooks/usePrescriptions';
 import { useCart } from '../context/CartContext';
 import PrescriptionUpload from '../components/PrescriptionUpload';
 import { getUserOrders, getUserAppointments } from '../lib/data';
+import LocationPicker from '../components/LocationPicker';
 
 const UserProfile = () => {
     const { user, profile, loading: authLoading, signOut } = useAuth();
@@ -96,7 +97,7 @@ const ProfileTab = ({ user, profile }) => {
     const [isEditing, setIsEditing] = useState(false);
     const [formData, setFormData] = useState({
         full_name: profile?.full_name || '',
-        phone: profile?.phone || '',
+        phone_number: profile?.phone_number || '',
         age: profile?.age || '',
         gender: profile?.gender || '',
         bio: profile?.bio || ''
@@ -148,9 +149,9 @@ const ProfileTab = ({ user, profile }) => {
                     <label className="block text-xs font-bold uppercase text-stone-500 mb-1">Phone</label>
                     <input
                         type="tel"
-                        name="phone"
+                        name="phone_number"
                         disabled={!isEditing}
-                        value={formData.phone}
+                        value={formData.phone_number}
                         onChange={handleChange}
                         className="w-full p-3 bg-stone-50 border border-stone-200 rounded-lg focus:outline-none focus:border-sage-400 disabled:opacity-70"
                     />
@@ -196,13 +197,142 @@ const ProfileTab = ({ user, profile }) => {
 };
 
 const AddressesTab = () => {
+    const { user } = useAuth();
+    const [addresses, setAddresses] = useState([]);
+    const [loading, setLoading] = useState(true);
+    const [showPicker, setShowPicker] = useState(false);
+    const [saving, setSaving] = useState(false);
+
+    const fetchAddresses = async () => {
+        if (!user) return;
+        const { data, error } = await supabase
+            .from('user_addresses')
+            .select('*')
+            .order('is_default', { ascending: false })
+            .order('created_at', { ascending: false });
+
+        if (error) console.error('Error fetching addresses:', error);
+        else setAddresses(data || []);
+        setLoading(false);
+    };
+
+    useEffect(() => {
+        fetchAddresses();
+    }, [user]);
+
+    const handleAddAddress = async (addressData) => {
+        setSaving(true);
+        try {
+            const { error } = await supabase.from('user_addresses').insert({
+                user_id: user.id,
+                full_address: addressData.full_address,
+                street: addressData.street,
+                city: addressData.city,
+                state: addressData.state,
+                country: addressData.country,
+                zip_code: addressData.zip_code,
+                coordinates: addressData.coordinates ? `(${addressData.coordinates.join(',')})` : null,
+                is_default: addresses.length === 0 // Make default if it's the first one
+            });
+
+            if (error) throw error;
+            await fetchAddresses();
+            setShowPicker(false);
+        } catch (error) {
+            console.error('Error saving address:', error);
+            alert('Failed to save address.');
+        } finally {
+            setSaving(false);
+        }
+    };
+
+    const handleDelete = async (id) => {
+        if (!confirm('Are you sure you want to delete this address?')) return;
+        try {
+            const { error } = await supabase.from('user_addresses').delete().eq('id', id);
+            if (error) throw error;
+            setAddresses(prev => prev.filter(a => a.id !== id));
+        } catch (error) {
+            console.error('Error deleting address:', error);
+        }
+    };
+
+    const handleSetDefault = async (id) => {
+        try {
+            // Optimistic update
+            setAddresses(prev => prev.map(a => ({ ...a, is_default: a.id === id })));
+
+            // Supabase update (trigger handles setting others to false)
+            const { error } = await supabase.from('user_addresses').update({ is_default: true }).eq('id', id);
+            if (error) throw error;
+            await fetchAddresses(); // Refresh to be sure
+        } catch (error) {
+            console.error('Error setting default:', error);
+            alert('Failed to update default address.');
+        }
+    };
+
+    if (showPicker) {
+        return (
+            <div className="flex flex-col items-center justify-center min-h-[400px]">
+                <LocationPicker
+                    onSelectAddress={handleAddAddress}
+                    onCancel={() => setShowPicker(false)}
+                />
+                {saving && <p className="mt-4 text-sage-600 animate-pulse">Saving address...</p>}
+            </div>
+        );
+    }
+
+    if (loading) return <div className="text-center py-10">Loading addresses...</div>;
+
+    if (addresses.length === 0) {
+        return (
+            <div className="bg-white rounded-3xl p-8 shadow-sm border border-sage-100 min-h-[300px] flex items-center justify-center text-center">
+                <div>
+                    <MapPin className="w-12 h-12 text-sage-200 mx-auto mb-4" />
+                    <h3 className="text-lg font-bold text-sage-900">No Saved Addresses</h3>
+                    <p className="text-stone-500 mb-6">You haven't added any addresses yet.</p>
+                    <Button variant="outline" onClick={() => setShowPicker(true)}>Add New Address</Button>
+                </div>
+            </div>
+        );
+    }
+
     return (
-        <div className="bg-white rounded-3xl p-8 shadow-sm border border-sage-100 min-h-[300px] flex items-center justify-center text-center">
-            <div>
-                <MapPin className="w-12 h-12 text-sage-200 mx-auto mb-4" />
-                <h3 className="text-lg font-bold text-sage-900">No Save Addresses</h3>
-                <p className="text-stone-500 mb-6">You haven't added any addresses yet.</p>
-                <Button variant="outline">Add New Address</Button>
+        <div className="space-y-6">
+            <div className="flex justify-between items-center">
+                <h3 className="font-serif font-bold text-xl text-sage-900">My Addresses</h3>
+                <Button size="sm" onClick={() => setShowPicker(true)}>+ Add New</Button>
+            </div>
+
+            <div className="grid gap-4">
+                {addresses.map((addr) => (
+                    <div key={addr.id} className={`bg-white p-6 rounded-2xl border ${addr.is_default ? 'border-saffron-400 ring-1 ring-saffron-400' : 'border-sage-100'} flex justify-between items-start group`}>
+                        <div>
+                            {addr.is_default && (
+                                <span className="inline-block px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-saffron-100 text-saffron-800 mb-2">
+                                    Default
+                                </span>
+                            )}
+                            <p className="font-bold text-sage-900">{addr.label || 'Address'}</p>
+                            <p className="text-stone-600 mt-1 max-w-md">{addr.full_address}</p>
+                            <p className="text-stone-400 text-sm mt-1">
+                                {addr.city}, {addr.state} {addr.zip_code}
+                            </p>
+                        </div>
+                        <div className="flex flex-col gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                            {!addr.is_default && (
+                                <Button variant="ghost" size="sm" onClick={() => handleSetDefault(addr.id)} className="text-xs">
+                                    Set as Default
+                                </Button>
+                            )}
+                            <Button variant="ghost" size="sm" onClick={() => handleDelete(addr.id)} className="text-red-500 hover:text-red-600 hover:bg-red-50">
+                                <LogOut className="w-4 h-4" /> {/* Using LogOut icon as delete for now, or import Trash */}
+                            </Button>
+                        </div>
+                    </div>
+                ))}
             </div>
         </div>
     );
@@ -253,7 +383,10 @@ const OrdersTab = ({ userId }) => {
                             <span className="inline-block px-3 py-1 rounded-full text-xs font-bold uppercase bg-green-100 text-green-800">
                                 {order.status || 'Processing'}
                             </span>
-                            <p className="font-bold text-sage-900 mt-1">Rs. {order.total_amount}</p>
+                            <p className="font-bold text-sage-900 mt-1">Rs. {Number(order.total_amount).toFixed(2)}</p>
+                            <Link to={`/order/${order.id}`} className="block mt-2 text-xs text-saffron-600 font-bold hover:underline">
+                                View Details &rarr;
+                            </Link>
                         </div>
                     </div>
                     {/* Simplified Item List */}
@@ -322,8 +455,8 @@ const AppointmentsTab = ({ userId }) => {
                                 <p className="text-sm text-stone-500">{apt.doctors?.specialty}</p>
                             </div>
                             <div className={`px-3 py-1 rounded-full text-xs font-bold uppercase ${apt.status === 'confirmed' ? 'bg-green-100 text-green-800' :
-                                    apt.status === 'completed' ? 'bg-blue-100 text-blue-800' :
-                                        'bg-stone-100 text-stone-600'
+                                apt.status === 'completed' ? 'bg-blue-100 text-blue-800' :
+                                    'bg-stone-100 text-stone-600'
                                 }`}>
                                 {apt.status}
                             </div>

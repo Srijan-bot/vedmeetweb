@@ -93,8 +93,43 @@ export const deleteConcern = async (id) => {
 // --- PRODUCTS ---
 
 export const getProducts = async () => {
-    const { data, error } = await supabase.from('products').select('*');
+    const { data, error } = await supabase
+        .from('products')
+        .select('*, product_variants(*)');
     if (error) { console.error("Error fetching products:", error); return []; }
+    return data;
+};
+
+const trendingFallback = [
+    { id: '141', name: 'Ashwagandha Root Powder', image: 'https://images.unsplash.com/photo-1615485925694-a031e464a2c4?auto=format&fit=crop&q=80&w=800', category: ['Single Herbs'], brand: 'VedPure', price: 599, disc_price: 399, rating: 4.8 },
+    { id: '147', name: 'Intensive Bhringraj Hair Oil', image: 'https://images.unsplash.com/photo-1526947425960-94d046f4377c?auto=format&fit=crop&q=80&w=800', category: ['Haircare'], brand: 'KeshKing', price: 299, disc_price: 249, rating: 4.7 },
+    { id: '142', name: 'Triphala Churna', image: 'https://images.unsplash.com/photo-1615485290382-441e4d049cb5?auto=format&fit=crop&q=80&w=800', category: ['Single Herbs'], brand: 'VedPure', price: 199, disc_price: 180, rating: 4.6 }
+];
+
+export const getTrendingProducts = async (limit = 5) => {
+    const { data, error } = await supabase
+        .from('products')
+        .select('id, name, image, category, brand, price, disc_price, rating')
+        .order('reviews', { ascending: false })
+        .limit(limit);
+
+    if (error) {
+        console.error("Error fetching trending:", error);
+        return trendingFallback;
+    }
+    return data && data.length > 0 ? data : trendingFallback;
+};
+
+export const searchProducts = async (query) => {
+    if (!query || query.length < 2) return [];
+
+    const { data, error } = await supabase
+        .from('products')
+        .select('id, name, image, category, brand, price, disc_price')
+        .or(`name.ilike.%${query}%,brand.ilike.%${query}%,meta_keywords.ilike.%${query}%`)
+        .limit(10);
+
+    if (error) { console.error("Error searching products:", error); return []; }
     return data;
 };
 
@@ -153,10 +188,75 @@ export const applyOffer = async (productIds, percentage) => {
 };
 
 export const removeOffer = async (productIds) => {
+    // Also remove from variants if any
+    // Logic: if product offer removed, removed from all its variants? Or just product level?
+    // Current requirement seems to be focused on variants, but let's keep product level for backward compat or mixed usage.
     await supabase.from('products').update({
         discount_percentage: 0,
         disc_price: null
     }).in('id', productIds);
+};
+
+export const applyVariantOffer = async (variantIds, percentage) => {
+    const { data: variants } = await supabase.from('product_variants').select('id, price').in('id', variantIds);
+
+    if (!variants) return;
+
+    for (const v of variants) {
+        const price = parseFloat(v.price || 0);
+        const disc_price = price - (price * (percentage / 100));
+
+        await supabase.from('product_variants').update({
+            discount_percentage: percentage,
+            disc_price: disc_price
+        }).eq('id', v.id);
+    }
+};
+
+export const removeVariantOffer = async (variantIds) => {
+    await supabase.from('product_variants').update({
+        discount_percentage: 0,
+        disc_price: null
+    }).in('id', variantIds);
+};
+
+// Dangerous: Deletes ALL products and related data
+export const deleteAllProducts = async () => {
+    // 1. Inventory & Stock (Delete dependents first)
+    const tablesToDelete = [
+        'inventory_transactions', // History
+        'inventory_ledger',       // History
+        'warehouse_batch_stock',  // Stock
+        'warehouse_stock',        // Stock
+        'product_batches',        // Batches
+        'product_reviews',        // Reviews
+        'order_items',            // Order Items (Orders remain but empty)
+        'prescription_items',     // Prescriptons remain but empty
+        'product_variants'        // Variants
+    ];
+
+    for (const table of tablesToDelete) {
+        // Using neq id 000... generally works for UUID, for others we need a valid condition.
+        // For efficiency, we can just delete everything where id is not null if allowed.
+        // But to be safe and consistent with "all", we use a broad filter.
+        let query = supabase.from(table).delete();
+
+        // Supabase JS requires a filter for delete.
+        if (table === 'order_items' || table === 'product_variants' || table === 'inventory_transactions' || table === 'inventory_ledger' || table === 'warehouse_batch_stock' || table === 'warehouse_stock' || table === 'product_batches' || table === 'product_reviews' || table === 'prescription_items') {
+            // These likely have UUID ids. 
+            query = query.neq('id', '00000000-0000-0000-0000-000000000000');
+        } else {
+            // Fallback
+            query = query.neq('id', '00000000-0000-0000-0000-000000000000');
+        }
+
+        const { error } = await query;
+        if (error) console.error(`Error deleting from ${table}:`, error);
+    }
+
+    // 2. Products (Integer ID)
+    const { error: prodError } = await supabase.from('products').delete().gt('id', 0);
+    if (prodError) throw prodError;
 };
 
 // --- DOCTORS ---
@@ -420,6 +520,16 @@ export const addWarehouse = async (warehouse) => {
     return data;
 };
 
+export const updateWarehouse = async (id, updates) => {
+    const { error } = await supabase.from('warehouses').update(updates).eq('id', id);
+    if (error) throw error;
+};
+
+export const deleteWarehouse = async (id) => {
+    const { error } = await supabase.from('warehouses').delete().eq('id', id);
+    if (error) throw error;
+};
+
 // Variants
 export const getVariants = async (productId) => {
     const { data, error } = await supabase.from('product_variants').select('*').eq('product_id', productId).order('created_at');
@@ -434,7 +544,7 @@ export const getAllVariants = async () => {
     // But for MVP/Development we start with simple select.
     const { data, error } = await supabase.from('product_variants').select(`
         *,
-        products (name, image, category)
+        products (id, name, image, category, brand, product_type, hsn_code, gst_rate)
     `).order('created_at');
 
     if (error) { console.error("Error fetching all variants:", error); return []; }
@@ -468,6 +578,11 @@ export const updateVariant = async (id, updates) => {
     if (error) throw error;
 };
 
+export const deleteVariant = async (id) => {
+    const { error } = await supabase.from('product_variants').delete().eq('id', id);
+    if (error) throw error;
+};
+
 // Transactions
 export const getInventoryTransactions = async (variantId = null, warehouseId = null, limit = 50) => {
     // Legacy support or migration view
@@ -486,7 +601,7 @@ export const getInventoryTransactions = async (variantId = null, warehouseId = n
     return data;
 };
 
-export const getInventoryLedger = async (variantId, warehouseId, limit = 100) => {
+export const getInventoryLedger = async (variantId, warehouseId, limit = 100, startDate = null, endDate = null) => {
     let query = supabase.from('inventory_ledger').select(`
         *,
         warehouses (name),
@@ -496,17 +611,36 @@ export const getInventoryLedger = async (variantId, warehouseId, limit = 100) =>
 
     if (variantId) query = query.eq('variant_id', variantId);
     if (warehouseId) query = query.eq('warehouse_id', warehouseId);
+    if (startDate) query = query.gte('transaction_date', new Date(startDate).toISOString());
+    if (endDate) {
+        const end = new Date(endDate);
+        end.setHours(23, 59, 59, 999);
+        query = query.lte('transaction_date', end.toISOString());
+    }
 
     const { data, error } = await query;
     if (error) { console.error("Error fetching ledger:", error); return []; }
     return data;
 };
 
+
 // ...
 
-export const inwardStock = async ({ variant_id, warehouse_id, batch_number, expiry_date, cost_price, quantity, reason }) => {
+export const inwardStock = async ({ variant_id, warehouse_id, batch_number, expiry_date, cost_price, quantity, reason, hsn_code, gst_rate }) => {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) throw new Error("Not authenticated");
+
+    // 0. Update Product HSN/GST if provided
+    if (hsn_code || gst_rate) {
+        // Fetch product_id first
+        const { data: variant } = await supabase.from('product_variants').select('product_id').eq('id', variant_id).single();
+        if (variant && variant.product_id) {
+            await supabase.from('products').update({
+                ...(hsn_code && { hsn_code }),
+                ...(gst_rate && { gst_rate: parseFloat(gst_rate) })
+            }).eq('id', variant.product_id);
+        }
+    }
 
     // 1. Create or Get Batch
     // Upsert batch (if batch number exists for this variant)
@@ -785,4 +919,23 @@ export const getUserOrders = async (userId) => {
 
     if (error) { console.error("Error fetching user orders:", error); return []; }
     return data;
+};
+
+// --- SITE SETTINGS ---
+
+export const getSetting = async (key) => {
+    const { data, error } = await supabase.from('site_settings').select('value').eq('key', key).maybeSingle();
+    if (error) {
+        if (error.code !== 'PGRST116') console.error(`Error fetching setting ${key}:`, error);
+        return null;
+    }
+    return data?.value ? JSON.parse(data.value) : null;
+};
+
+export const saveSetting = async (key, value) => {
+    const { error } = await supabase.from('site_settings').upsert({
+        key,
+        value: JSON.stringify(value)
+    });
+    if (error) throw error;
 };

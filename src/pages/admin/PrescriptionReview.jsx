@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { usePrescriptions } from '../../hooks/usePrescriptions';
 import { supabase } from '../../lib/supabase';
+import { getVariants } from '../../lib/data';
 import Button from '../../components/Button';
 import { ArrowLeft, ZoomIn, Search, Plus, Trash2, Check, AlertCircle, Save } from 'lucide-react';
 
@@ -47,11 +48,17 @@ const PrescriptionReview = () => {
             setDetails(data);
             if (data?.items) {
                 // Pre-fill if already referred (edit mode)
-                const existing = data.items.map(item => ({
-                    medicine_id: item.medicine_id,
-                    product: item.product,
-                    is_alternative: item.is_alternative,
-                    doctor_note: item.doctor_note || ''
+                const existing = await Promise.all(data.items.map(async (item) => {
+                    const variants = await getVariants(item.medicine_id);
+                    return {
+                        medicine_id: item.medicine_id,
+                        product: item.product,
+                        variant_id: item.variant_id || (variants.length > 0 ? variants[0].id : null),
+                        quantity: item.quantity || 1,
+                        is_alternative: item.is_alternative,
+                        doctor_note: item.doctor_note || '',
+                        variants: variants || []
+                    };
                 }));
                 setSelectedMedicines(existing);
             }
@@ -86,14 +93,20 @@ const PrescriptionReview = () => {
         setSearching(false);
     };
 
-    const addMedicine = (product) => {
+    const addMedicine = async (product) => {
         if (selectedMedicines.find(m => m.medicine_id === product.id)) return;
+
+        // Fetch variants for the product
+        const variants = await getVariants(product.id);
 
         setSelectedMedicines([...selectedMedicines, {
             medicine_id: product.id,
             product: product,
+            variant_id: variants && variants.length > 0 ? variants[0].id : null,
+            quantity: 1,
             is_alternative: false,
-            doctor_note: ''
+            doctor_note: '',
+            variants: variants || []
         }]);
         setSearchQuery('');
         setSearchResults([]);
@@ -114,6 +127,13 @@ const PrescriptionReview = () => {
     const handleRefer = async () => {
         if (selectedMedicines.length === 0) {
             if (!confirm("Are you sure you want to refer without any medicines? This might confuse the user.")) return;
+        }
+
+        // Validate variants
+        const missingVariants = selectedMedicines.some(m => m.variants.length > 0 && !m.variant_id);
+        if (missingVariants) {
+            alert("Please select a variant for all products that have variants.");
+            return;
         }
 
         setSaving(true);
@@ -285,6 +305,23 @@ const PrescriptionReview = () => {
                                             <div>
                                                 <h4 className="font-bold text-sage-900 text-sm">{item.product?.name}</h4>
                                                 <p className="text-xs text-stone-500">Price: <span className="text-sage-700">₹{item.product?.price}</span></p>
+
+                                                {/* Variant Selection */}
+                                                {item.variants && item.variants.length > 0 && (
+                                                    <div className="mt-2">
+                                                        <select
+                                                            value={item.variant_id || ''}
+                                                            onChange={(e) => updateMedicine(idx, 'variant_id', e.target.value)}
+                                                            className="text-xs border border-sage-200 rounded px-2 py-1 bg-sage-50 focus:outline-none focus:ring-1 focus:ring-sage-400"
+                                                        >
+                                                            {item.variants.map(v => (
+                                                                <option key={v.id} value={v.id}>
+                                                                    {v.name} ({v.volume || v.weight || 'Std'}) - ₹{v.price}
+                                                                </option>
+                                                            ))}
+                                                        </select>
+                                                    </div>
+                                                )}
                                             </div>
                                         </div>
                                         <button onClick={() => removeMedicine(idx)} className="text-red-400 hover:text-red-600">
@@ -292,17 +329,32 @@ const PrescriptionReview = () => {
                                         </button>
                                     </div>
 
-                                    <div className="grid grid-cols-2 gap-3">
-                                        <div className="flex items-center gap-2">
-                                            <input
-                                                type="checkbox"
-                                                id={`alt-${idx}`}
-                                                checked={item.is_alternative}
-                                                onChange={(e) => updateMedicine(idx, 'is_alternative', e.target.checked)}
-                                                className="rounded border-sage-300 text-saffron-600 focus:ring-saffron-500"
-                                            />
-                                            <label htmlFor={`alt-${idx}`} className="text-xs font-medium text-sage-700 cursor-pointer">Is Alternative?</label>
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                        {/* Quantity & Alternative */}
+                                        <div className="flex items-center gap-3">
+                                            <div className="flex items-center gap-2">
+                                                <span className="text-xs font-medium text-stone-500">Qty:</span>
+                                                <input
+                                                    type="number"
+                                                    min="1"
+                                                    value={item.quantity || 1}
+                                                    onChange={(e) => updateMedicine(idx, 'quantity', parseInt(e.target.value) || 1)}
+                                                    className="w-16 text-xs border border-sage-200 rounded px-2 py-1"
+                                                />
+                                            </div>
+                                            <div className="flex items-center gap-2">
+                                                <input
+                                                    type="checkbox"
+                                                    id={`alt-${idx}`}
+                                                    checked={item.is_alternative}
+                                                    onChange={(e) => updateMedicine(idx, 'is_alternative', e.target.checked)}
+                                                    className="rounded border-sage-300 text-saffron-600 focus:ring-saffron-500"
+                                                />
+                                                <label htmlFor={`alt-${idx}`} className="text-xs font-medium text-sage-700 cursor-pointer">Is Alt?</label>
+                                            </div>
                                         </div>
+
+                                        {/* Note */}
                                         <div>
                                             <input
                                                 type="text"

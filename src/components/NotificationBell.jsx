@@ -20,38 +20,52 @@ const NotificationBell = () => {
     };
 
     useEffect(() => {
-        fetchNotifications();
+        let mounted = true;
+        let subscription = null;
+
+        const fetchData = async () => {
+            if (!mounted) return;
+            await fetchNotifications();
+        };
+        fetchData();
 
         const setupSubscription = async () => {
-            const { data: { user } } = await supabase.auth.getUser();
-            if (!user) return;
+            try {
+                const { data: { user } } = await supabase.auth.getUser();
+                if (!mounted || !user) return;
 
-            const subscription = supabase
-                .channel('public:notifications')
-                .on('postgres_changes', {
-                    event: 'INSERT',
-                    schema: 'public',
-                    table: 'notifications',
-                    filter: `user_id=eq.${user.id}`
-                }, (payload) => {
-                    const newNotification = payload.new;
-                    setNotifications(prev => [newNotification, ...prev]);
-                    setUnreadCount(prev => prev + 1);
+                subscription = supabase
+                    .channel('public:notifications')
+                    .on('postgres_changes', {
+                        event: 'INSERT',
+                        schema: 'public',
+                        table: 'notifications',
+                        filter: `user_id=eq.${user.id}`
+                    }, (payload) => {
+                        if (!mounted) return;
+                        const newNotification = payload.new;
+                        setNotifications(prev => [newNotification, ...prev]);
+                        setUnreadCount(prev => prev + 1);
 
-                    // Show Toast
-                    setToast(newNotification);
-                    setTimeout(() => setToast(null), 5000);
-                })
-                .subscribe();
-
-            return () => {
-                supabase.removeChannel(subscription);
-            };
+                        // Show Toast
+                        setToast(newNotification);
+                        setTimeout(() => {
+                            if (mounted) setToast(null);
+                        }, 5000);
+                    })
+                    .subscribe();
+            } catch (error) {
+                console.error("Error setting up subscription:", error);
+            }
         };
 
-        const cleanup = setupSubscription();
+        setupSubscription();
+
         return () => {
-            cleanup.then(unsub => unsub && unsub());
+            mounted = false;
+            if (subscription) {
+                supabase.removeChannel(subscription).catch(console.error);
+            }
         };
     }, []);
 

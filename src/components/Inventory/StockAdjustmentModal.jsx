@@ -116,13 +116,20 @@ const StockAdjustmentModal = ({ isOpen, onClose, onSuccess }) => {
                                 value={formData.type}
                                 onChange={e => setFormData({ ...formData, type: e.target.value })}
                             >
-                                <option value="adjustment">Adjustment</option>
+                                <option value="adjustment">Manual Adjustment</option>
                                 <option value="return">Return</option>
-                                <option value="damage">Damage/Loss</option>
-                                <option value="correction">Correction</option>
+                                <option value="damaged">Damage</option>
+                                <option value="expired">Expiry Write-off</option>
+                                <option value="audit">Stock Audit</option>
                             </select>
                         </div>
                     </div>
+
+                    {variants.find(v => v.id === formData.variant_id)?.products?.product_type === 'Medicine' && (
+                        <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-sm text-amber-800">
+                            <strong>Note:</strong> You are adjusting a Medicine. This will update total stock but not specific batch quantities. For precise batch tracking, please use the Batch Details view.
+                        </div>
+                    )}
 
                     <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">Reason (Required)</label>

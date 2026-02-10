@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
-import { ShoppingBag, Users, FileText, AlertTriangle, ArrowRight, CheckCircle } from 'lucide-react';
+import { ShoppingBag, Users, FileText, AlertTriangle, ArrowRight, CheckCircle } from 'lucide-react'; // Imports kept intact
 import { Link, useLocation } from 'react-router-dom';
-import { getProducts, getDoctors, getBlogs, getProfiles } from '../../lib/data';
+import { getProducts, getDoctors, getBlogs, getProfiles, getAllVariants } from '../../lib/data'; // Added getAllVariants
 import { supabase } from '../../lib/supabase';
 import ChatSystem from '../../components/ChatSystem';
 import { MessageSquare } from 'lucide-react';
@@ -13,7 +13,7 @@ const DashboardOverview = () => {
         doctors: 0,
         blogs: 0
     });
-    const [lowStockProducts, setLowStockProducts] = useState([]);
+    const [lowStockVariants, setLowStockVariants] = useState([]); // Renamed for clarity
     const [loading, setLoading] = useState(true);
     const [role, setRole] = useState(null);
     const [userCount, setUserCount] = useState(0);
@@ -22,9 +22,6 @@ const DashboardOverview = () => {
     useEffect(() => {
         if (location.state?.openChat) {
             setIsChatOpen(true);
-            // Clear state so it doesn't reopen on refresh? 
-            // Actually router state persists on refresh usually, but clearing it is clean.
-            // window.history.replaceState({}, document.title)
         }
     }, [location]);
 
@@ -43,7 +40,8 @@ const DashboardOverview = () => {
                 const promises = [
                     getProducts(),
                     getDoctors(),
-                    getBlogs()
+                    getBlogs(),
+                    getAllVariants() // Fetch variants for accurate stock
                 ];
 
                 if (currentRole === 'admin') {
@@ -54,9 +52,10 @@ const DashboardOverview = () => {
                 const productsData = results[0];
                 const doctorsData = results[1];
                 const blogsData = results[2];
+                const variantsData = results[3];
 
                 if (currentRole === 'admin') {
-                    setUserCount(results[3]?.length || 0);
+                    setUserCount(results[4]?.length || 0); // Correct index if profiles added
                 }
 
                 setStats({
@@ -65,9 +64,22 @@ const DashboardOverview = () => {
                     blogs: blogsData.length
                 });
 
-                // Filter for low stock (< 10)
-                const lowStock = productsData.filter(p => (p.stock_quantity || 0) < 10);
-                setLowStockProducts(lowStock);
+                // Filter for low stock variants (< 10)
+                const lowStock = variantsData.filter(v => {
+                    const stock = parseInt(v.stock_quantity || 0);
+                    // Use min_stock_level if set, otherwise default to 10
+                    const min = parseInt(v.min_stock_level) || 10;
+                    return stock <= min;
+                });
+
+                // Helper to get product image from variant object (join)
+                const enrichedLowStock = lowStock.map(v => ({
+                    ...v,
+                    image: v.products?.image || 'https://via.placeholder.com/150', // Fallback
+                    productName: v.products?.name || 'Unknown Product'
+                }));
+
+                setLowStockVariants(enrichedLowStock);
             } catch (error) {
                 console.error("Error loading dashboard data:", error);
             } finally {
@@ -78,10 +90,11 @@ const DashboardOverview = () => {
         loadDashboardData();
     }, []);
 
-    if (loading) return <div className="p-8">Loading dashboard...</div>;
+    if (loading) return <div className="p-8 text-center text-sage-400">Loading dashboard...</div>;
 
     return (
         <div className="space-y-8">
+            {/* ... (Header and Quick Access same as before) ... */}
             <div className="flex items-center justify-between">
                 <h1 className="text-3xl font-serif font-bold text-sage-900">Dashboard Overview</h1>
                 <div className="flex gap-2">
@@ -104,8 +117,6 @@ const DashboardOverview = () => {
                     )}
                 </div>
             </div>
-
-
 
             <ChatSystem isOpen={isChatOpen} onClose={() => setIsChatOpen(false)} />
 
@@ -170,30 +181,30 @@ const DashboardOverview = () => {
                 <div className="p-6 border-b border-sage-100 flex items-center justify-between bg-red-50">
                     <div className="flex items-center gap-2 text-red-700">
                         <AlertTriangle className="w-5 h-5" />
-                        <h3 className="font-bold text-lg">Low Stock Alert (Less than 10)</h3>
+                        <h3 className="font-bold text-lg">Low Stock Alert (Less than 50)</h3>
                     </div>
-                    <Link to="/admin/products" className="text-sm text-red-600 hover:text-red-800 font-medium">Manage Inventory</Link>
+                    <Link to="/inventory/stock" className="text-sm text-red-600 hover:text-red-800 font-medium">Manage Inventory</Link>
                 </div>
 
-                {lowStockProducts.length > 0 ? (
+                {lowStockVariants.length > 0 ? (
                     <div className="divide-y divide-sage-100">
-                        {lowStockProducts.map(product => (
-                            <div key={product.id} className="p-4 flex items-center justify-between hover:bg-sage-50 transition-colors">
+                        {lowStockVariants.map(variant => (
+                            <div key={variant.id} className="p-4 flex items-center justify-between hover:bg-sage-50 transition-colors">
                                 <div className="flex items-center gap-4">
-                                    <img src={product.image} alt={product.name} className="w-12 h-12 rounded-md object-cover bg-stone-100" />
+                                    <img src={variant.image} alt={variant.name} className="w-12 h-12 rounded-md object-cover bg-stone-100" />
                                     <div>
-                                        <h4 className="font-bold text-sage-900">{product.name}</h4>
-                                        <p className="text-xs text-stone-500">SKU: {String(product.id || '').slice(0, 8)}...</p>
+                                        <h4 className="font-bold text-sage-900">{variant.productName}</h4>
+                                        <p className="text-xs text-stone-500">{variant.name || 'Default Variant'} (SKU: {variant.sku})</p>
                                     </div>
                                 </div>
                                 <div className="flex items-center gap-6">
                                     <div className="text-right">
                                         <span className="block text-xs text-stone-500 mb-1">Current Stock</span>
                                         <span className="px-3 py-1 bg-red-100 text-red-700 rounded-full text-xs font-bold">
-                                            {product.stock_quantity || 0} units
+                                            {variant.stock_quantity || 0} units
                                         </span>
                                     </div>
-                                    <Link to={`/admin/products/edit/${product.id}`} className="p-2 text-stone-400 hover:text-sage-600">
+                                    <Link to={`/admin/products/edit/${variant.product_id}`} className="p-2 text-stone-400 hover:text-sage-600">
                                         <ArrowRight className="w-4 h-4" />
                                     </Link>
                                 </div>

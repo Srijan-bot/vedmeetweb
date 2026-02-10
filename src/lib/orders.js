@@ -15,6 +15,9 @@ export const placeOrder = async (orderData) => {
             },
             p_total_amount: orderData.totalAmount,
             p_payment_method: orderData.paymentMethod,
+            p_coordinates: orderData.coordinates, // Pass coordinates
+            p_shipping_amount: orderData.shippingCost || 0, // Pass shipping amount
+            p_tax_amount: orderData.taxAmount || 0, // Pass tax amount
             p_items: orderData.items.map(item => ({
                 product_id: item.id,
                 variant_id: item.variantId || null,
@@ -27,6 +30,7 @@ export const placeOrder = async (orderData) => {
         return data; // Returns the new order ID
     } catch (error) {
         console.error('Error placing order:', error);
-        throw error;
+        // Throw the detailed message if available, otherwise the error object
+        throw error.message || error.details || error;
     }
 };

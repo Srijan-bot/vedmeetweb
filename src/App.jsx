@@ -39,6 +39,7 @@ import PrescriptionManager from './pages/admin/PrescriptionManager';
 import PrescriptionReview from './pages/admin/PrescriptionReview';
 import UserManager from './pages/admin/UserManager';
 import SettingsManager from './pages/admin/SettingsManager';
+import PartnerManager from './pages/admin/PartnerManager';
 
 import Inventory from './pages/admin/Inventory';
 import InventoryReports from './pages/admin/InventoryReports';
@@ -47,10 +48,14 @@ import OrderDetails from './pages/admin/OrderDetails';
 import UserPrescriptions from './pages/UserPrescriptions';
 import UserProfile from './pages/UserProfile';
 import PrescriptionDetails from './pages/PrescriptionDetails';
+import OrderDetail from './pages/OrderDetail';
+import Invoice from './pages/Invoice';
 import ProtectedRoute from './components/ProtectedRoute';
 import { CartProvider } from './context/CartContext';
 import CartDrawer from './components/CartDrawer';
 import ScrollToTop from './components/ScrollToTop';
+import MaintenanceGate from './components/MaintenanceGate';
+import { Outlet } from 'react-router-dom';
 
 function App() {
   return (
@@ -58,28 +63,30 @@ function App() {
       <ScrollToTop />
       <CartDrawer />
       <Routes>
-        {/* Public Routes */}
-        <Route path="/" element={<Layout><Home /></Layout>} />
-        <Route path="/shop" element={<Layout><Shop /></Layout>} />
-        <Route path="/product/:id" element={<Layout><ProductDetails /></Layout>} />
-        <Route path="/cart" element={<Layout><Cart /></Layout>} />
-        <Route path="/checkout" element={<Layout><Checkout /></Layout>} />
-        <Route path="/blog" element={<Layout><Blog /></Layout>} />
-        <Route path="/blog/:slug" element={<Layout><BlogPost /></Layout>} />
-        <Route path="/consultation" element={<Layout><BookAppointment /></Layout>} />
-        <Route path="/book-appointment" element={<Layout><BookAppointment /></Layout>} />
-        <Route path="/about" element={<Layout><About /></Layout>} />
-        <Route path="/contact" element={<Layout><Contact /></Layout>} />
+        {/* Public Routes restricted by Maintenance Mode */}
+        <Route element={<MaintenanceGate><Outlet /></MaintenanceGate>}>
+          <Route path="/" element={<Layout><Home /></Layout>} />
+          <Route path="/shop" element={<Layout><Shop /></Layout>} />
+          <Route path="/product/:id" element={<Layout><ProductDetails /></Layout>} />
+          <Route path="/cart" element={<Layout><Cart /></Layout>} />
+          <Route path="/checkout" element={<Layout><Checkout /></Layout>} />
+          <Route path="/blog" element={<Layout><Blog /></Layout>} />
+          <Route path="/blog/:slug" element={<Layout><BlogPost /></Layout>} />
+          <Route path="/consultation" element={<Layout><BookAppointment /></Layout>} />
+          <Route path="/book-appointment" element={<Layout><BookAppointment /></Layout>} />
+          <Route path="/about" element={<Layout><About /></Layout>} />
+          <Route path="/contact" element={<Layout><Contact /></Layout>} />
 
-        {/* Auth Routes */}
-        <Route path="/login" element={<Layout><Login /></Layout>} />
-        <Route path="/signup" element={<Layout><Signup /></Layout>} />
-        <Route path="/profile" element={<Layout><UserProfile /></Layout>} />
-        <Route path="/complete-profile" element={<Layout><UserProfile /></Layout>} />
+          {/* Auth Routes */}
+          <Route path="/login" element={<Layout><Login /></Layout>} />
+          <Route path="/signup" element={<Layout><Signup /></Layout>} />
+          <Route path="/profile" element={<Layout><UserProfile /></Layout>} />
+          <Route path="/complete-profile" element={<Layout><UserProfile /></Layout>} />
 
-        {/* Prescription Routes */}
-        <Route path="/prescriptions" element={<Layout><UserPrescriptions /></Layout>} />
-        <Route path="/prescriptions/:id" element={<Layout><PrescriptionDetails /></Layout>} />
+          {/* Prescription Routes */}
+          <Route path="/prescriptions" element={<Layout><UserPrescriptions /></Layout>} />
+          <Route path="/prescriptions/:id" element={<Layout><PrescriptionDetails /></Layout>} />
+        </Route>
 
         {/* Admin Routes */}
         <Route path="/admin/login" element={<AdminLogin />} />
@@ -101,24 +108,17 @@ function App() {
         </Route>
 
         <Route path="/admin" element={
-          <ProtectedRoute allowedRoles={['admin', 'seo_writer', 'doctor']}>
+          <ProtectedRoute allowedRoles={['admin', 'seo_writer', 'doctor', 'agent']}>
             <DashboardLayout />
           </ProtectedRoute>
         }>
           <Route index element={<Navigate to="dashboard" replace />} />
           <Route path="dashboard" element={<DashboardOverview />} />
           <Route path="appointments" element={<Appointments />} />
-
-          import OrderManagement from './pages/admin/OrderManagement';
-          import OrderDetails from './pages/admin/OrderDetails';
-
-          // ... (in App component)
           <Route path="prescriptions" element={<PrescriptionManager />} />
           <Route path="prescriptions/:id" element={<PrescriptionReview />} />
-
           <Route path="orders" element={<OrderManagement />} />
           <Route path="orders/:orderId" element={<OrderDetails />} />
-
           <Route path="products" element={<ProductManager />} />
           <Route path="products/new" element={<ProductForm />} />
           <Route path="products/edit/:id" element={<ProductForm />} />
@@ -132,8 +132,7 @@ function App() {
           <Route path="categories" element={<ProtectedRoute allowedRoles={['admin']}><CategoryManager /></ProtectedRoute>} />
           <Route path="concerns" element={<ProtectedRoute allowedRoles={['admin']}><ConcernManager /></ProtectedRoute>} />
           <Route path="brands" element={<ProtectedRoute allowedRoles={['admin']}><BrandManager /></ProtectedRoute>} />
-
-
+          <Route path="partners" element={<ProtectedRoute allowedRoles={['admin']}><PartnerManager /></ProtectedRoute>} />
 
           <Route path="blogs" element={<BlogManager />} />
           <Route path="blogs/new" element={<BlogForm />} />
@@ -142,6 +141,9 @@ function App() {
           <Route path="users" element={<ProtectedRoute allowedRoles={['admin']}><UserManager /></ProtectedRoute>} />
           <Route path="settings" element={<ProtectedRoute allowedRoles={['admin']}><SettingsManager /></ProtectedRoute>} />
         </Route>
+
+        <Route path="/order/:orderId" element={<Layout><OrderDetail /></Layout>} />
+        <Route path="/invoice/:orderId" element={<Invoice />} />
 
         <Route path="*" element={<Layout><div className="p-20 text-center">Page not found</div></Layout>} />
       </Routes>

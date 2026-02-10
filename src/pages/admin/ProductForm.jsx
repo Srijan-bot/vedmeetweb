@@ -3,31 +3,63 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { getProduct, addProduct, updateProduct, getCategories, getConcerns, getBrands, uploadFile, getVariants, addVariant, updateVariant } from '../../lib/data';
 import { supabase } from '../../lib/supabase';
 import { generateProductContent } from '../../lib/gemini';
-import { Sparkles, Trash2, X } from 'lucide-react';
+import {
+    Sparkles, Trash2, X, Save, LayoutDashboard, Image as ImageIcon,
+    DollarSign, Package, Settings, Search, ChevronLeft, UploadCloud
+} from 'lucide-react';
 import Button from '../../components/Button';
 import MultiSelect from '../../components/MultiSelect';
 
 import ReactQuill from 'react-quill-new';
 import 'react-quill-new/dist/quill.snow.css';
 
+const parseWithUnit = (str, defaultUnit) => {
+    if (!str) return { value: '', unit: defaultUnit };
+
+    // List of known units to check against, sorted by length to match "fl oz" before "oz"
+    const KNOWN_UNITS = [
+        'fl oz', 'mg', 'kg', 'lb', 'oz', 'ml', 'pcs', 'tabs', 'caps',
+        'strips', 'pack', 'jar', 'bottle', 'box', 'cm', 'in', 'g', 'l', 'm'
+    ];
+
+    for (const unit of KNOWN_UNITS) {
+        // Match explicit " value unit" pattern (case-insensitive unit)
+        // We look for the unit at the end of the string, preceded by space
+        const regex = new RegExp(`^(.*)\\s+(${unit})$`, 'i');
+        const match = str.match(regex);
+        if (match) {
+            return { value: match[1], unit: match[2].toLowerCase() };
+        }
+    }
+
+    // Fallback: If no known unit found, assume the whole string is the value
+    // This handles "10x10x10" without a unit suffix correctly (assigning defaultUnit)
+    return { value: str, unit: defaultUnit };
+};
+
 const ProductForm = () => {
     const { id } = useParams();
     const navigate = useNavigate();
     const isEditMode = !!id;
 
+    // --- State Management ---
+    const [activeTab, setActiveTab] = useState('basic');
     const [categories, setCategories] = useState([]);
     const [concerns, setConcerns] = useState([]);
     const [brands, setBrands] = useState([]);
+    const [overrideGST, setOverrideGST] = useState(false);
     const [formData, setFormData] = useState({
         name: '',
         description: '',
+        // Global/Summary fields (read-only or calculated)
         price: '',
-        category: [], // Now an array
-        concern: [],  // Now an array
-        image: '',
-        brand: '',
         stock_quantity: '',
         stock_status: 'In Stock',
+
+        category: [],
+        concern: [],
+        image: '',
+        brand: '',
         features: '',
         ingredients: '',
         benefits: '',
@@ -35,23 +67,29 @@ const ProductForm = () => {
         discount_percentage: 0,
         disc_price: null,
         meta_keywords: '',
-        specifications: '', // New field
+        specifications: '', // General specs only
+        // Removed specific physical props from main form state control, managed via variants summary
         images: [],
         seo_title: '',
         meta_description: '',
-        short_description: ''
+        short_description: '',
+        product_type: 'Cosmetic',
+        hsn_code: '',
+        gst_rate: '',
+        cost_price: ''
     });
+
+    // Variants are now the source of truth for physical specs and price
     const [variants, setVariants] = useState([]);
-    const [hasVariants, setHasVariants] = useState(false);
     const [mainImageFile, setMainImageFile] = useState(null);
-    const [additionalImageFiles, setAdditionalImageFiles] = useState({}); // Keyed by index
+    const [additionalImageFiles, setAdditionalImageFiles] = useState({});
     const [loading, setLoading] = useState(false);
     const [generating, setGenerating] = useState(false);
-
     const [role, setRole] = useState(null);
 
     const isSeoWriter = role === 'seo_writer';
 
+    // --- Role & Data Fetching ---
     useEffect(() => {
         const getRole = async () => {
             const { data: { session } } = await supabase.auth.getSession();
@@ -67,39 +105,6 @@ const ProductForm = () => {
         getRole();
     }, []);
 
-    const handleAIGenerate = async () => {
-        if (!formData.name) {
-            alert("Please enter a Product Name first.");
-            return;
-        }
-        setGenerating(true);
-        try {
-            // Join names for context
-            const catNames = categories.filter(c => formData.category.includes(c.id)).map(c => c.name).join(', ');
-            const conNames = concerns.filter(c => formData.concern.includes(c.id)).map(c => c.name).join(', ');
-
-            const content = await generateProductContent({
-                name: formData.name,
-                categoryName: catNames,
-                concernName: conNames
-            });
-
-            setFormData(prev => ({
-                ...prev,
-                description: content.description || prev.description,
-                features: content.features || prev.features,
-                ingredients: content.ingredients || prev.ingredients,
-                benefits: content.benefits || prev.benefits,
-                usage: content.usage || prev.usage
-            }));
-        } catch (error) {
-            console.error("Gemini Error:", error);
-            alert(`Failed to generate content: ${error.message}`);
-        } finally {
-            setGenerating(false);
-        }
-    };
-
     useEffect(() => {
         const loadMetadata = async () => {
             const cats = await getCategories();
@@ -113,24 +118,28 @@ const ProductForm = () => {
 
         if (isEditMode) {
             fetchProduct();
-            fetchVariants();
+        } else {
+            // New Product: Initialize with 1 Standard Variant
+            setVariants([{
+                id: `temp-${Date.now()}`,
+                name: 'Standard',
+                sku: '',
+                price: '',
+                stock_quantity: 0,
+                cost_price: 0,
+                gst_rate: 18,
+                hsn_code: '',
+                min_stock_level: 10,
+                reorder_quantity: 50,
+                net_qty: '', net_unit: 'g', // New unified field
+            }]);
         }
     }, [id]);
-
-    const fetchVariants = async () => {
-        const vData = await getVariants(id);
-        if (vData && vData.length > 0) {
-            setVariants(vData);
-            setHasVariants(true);
-        }
-    };
 
     const fetchProduct = async () => {
         const data = await getProduct(id);
         if (data) {
-            // Ensure array fallbacks for existing string data during migration transition
             const processedData = { ...data };
-            // Ensure images is an array
             if (processedData.images && !Array.isArray(processedData.images)) {
                 processedData.images = [];
             } else if (!processedData.images) {
@@ -140,11 +149,60 @@ const ProductForm = () => {
             setFormData({
                 ...processedData,
                 category: Array.isArray(processedData.category) ? processedData.category : (processedData.category ? [processedData.category] : []),
-                concern: Array.isArray(processedData.concern) ? processedData.concern : (processedData.concern ? [processedData.concern] : [])
+                concern: Array.isArray(processedData.concern) ? processedData.concern : (processedData.concern ? [processedData.concern] : []),
+                gst_rate: processedData.gst_rate || '',
+                product_type: processedData.product_type || 'Cosmetic',
             });
+
+            if (processedData.gst_rate && processedData.gst_rate > 0) {
+                setOverrideGST(true);
+            }
+
+            // Fetch Variants
+            const vData = await getVariants(id);
+            if (vData && vData.length > 0) {
+                const parsedVariants = vData.map(v => {
+                    const vol = parseWithUnit(v.volume, 'g'); // Using volume col for Net Qty (size)
+                    const w = parseWithUnit(v.weight, 'g');   // Using weight col for Shipping Weight
+                    const d = parseWithUnit(v.dimensions, 'cm');
+
+                    return {
+                        ...v,
+                        net_qty: vol.value, net_unit: vol.unit || 'g',
+                        shipping_weight_value: w.value, shipping_weight_unit: w.unit || 'g',
+                        dimensions_value: d.value, dimensions_unit: d.unit || 'cm',
+                        pieces: v.pieces || ''
+                    };
+                });
+                setVariants(parsedVariants);
+            } else {
+                // If existing product has NO variants (legacy data), construct one from main product data
+                const vol = parseWithUnit(processedData.volume, 'g');
+                const w = parseWithUnit(processedData.weight, 'g');
+                const d = parseWithUnit(processedData.dimensions, 'cm');
+
+                setVariants([{
+                    id: `temp-${Date.now()}`,
+                    name: 'Standard',
+                    sku: '',
+                    price: processedData.price,
+                    stock_quantity: processedData.stock_quantity,
+                    cost_price: processedData.cost_price,
+                    gst_rate: processedData.gst_rate || 18,
+                    hsn_code: processedData.hsn_code,
+                    min_stock_level: 10,
+                    reorder_quantity: 50, // Default REORDER level
+
+                    net_qty: vol.value, net_unit: vol.unit || 'g',
+                    shipping_weight_value: w.value, shipping_weight_unit: w.unit || 'g',
+                    dimensions_value: d.value, dimensions_unit: d.unit || 'cm',
+                    pieces: processedData.pieces || ''
+                }]);
+            }
         }
     };
 
+    // --- Handlers ---
     const handleChange = (e) => {
         const { name, value } = e.target;
         setFormData(prev => ({ ...prev, [name]: value }));
@@ -160,103 +218,157 @@ const ProductForm = () => {
         }
     };
 
+    const handleAIGenerate = async () => {
+        if (!formData.name) {
+            alert("Please enter a Product Name first.");
+            return;
+        }
+        setGenerating(true);
+        try {
+            const catNames = categories.filter(c => formData.category.includes(c.id)).map(c => c.name).join(', ');
+            const conNames = concerns.filter(c => formData.concern.includes(c.id)).map(c => c.name).join(', ');
+
+            const content = await generateProductContent({
+                name: formData.name,
+                categoryName: catNames,
+                concernName: conNames
+            });
+
+            setFormData(prev => ({
+                ...prev,
+                description: content.description || prev.description,
+                short_description: content.short_description || prev.short_description,
+                features: content.features || prev.features,
+                ingredients: content.ingredients || prev.ingredients,
+                benefits: content.benefits || prev.benefits,
+                usage: content.usage || prev.usage,
+                seo_title: content.seo_title || prev.seo_title,
+                meta_keywords: content.meta_keywords || prev.meta_keywords,
+                meta_description: content.meta_description || prev.meta_description
+            }));
+            alert("Content generated successfully using AI!");
+        } catch (error) {
+            console.error("Gemini Error:", error);
+            alert(`Failed to generate content: ${error.message}`);
+        } finally {
+            setGenerating(false);
+        }
+    };
+
     const handleSubmit = async (e) => {
         e.preventDefault();
+
+        if (variants.length === 0) {
+            alert("Product must have at least one variant.");
+            return;
+        }
+
         setLoading(true);
         try {
+            // First variant is the "primary" one for summary fields
+            const primaryVariant = variants[0];
+            const totalStock = variants.reduce((sum, v) => sum + parseInt(v.stock_quantity || 0), 0);
+
+            // Map variant fields to payload:
+            // volume -> Net Quantity (Size)
+            // weight -> Shipping Weight (Logistics)
+            const mapVariantToPayload = (v) => ({
+                volume: v.net_qty ? `${v.net_qty} ${v.net_unit}` : null,
+                weight: v.shipping_weight_value ? `${v.shipping_weight_value} ${v.shipping_weight_unit}` : null,
+                dimensions: v.dimensions_value ? `${v.dimensions_value} ${v.dimensions_unit}` : null,
+                pieces: v.pieces ? parseInt(v.pieces) : null
+            });
+
+            const primarySpecs = mapVariantToPayload(primaryVariant);
+
             // Clean payload
-            const payload = {
+            const finalPayload = {
                 ...formData,
-                price: parseFloat(formData.price),
-                stock_quantity: parseInt(formData.stock_quantity || 0),
+                // Inherited from Primary Variant
+                price: parseFloat(primaryVariant.price || 0),
+                cost_price: parseFloat(primaryVariant.cost_price || 0),
+                stock_quantity: totalStock,
+
+                weight: primarySpecs.weight,
+                volume: primarySpecs.volume,
+                pieces: primarySpecs.pieces,
+                dimensions: primarySpecs.dimensions,
+
+                // Form Fields
                 discount_percentage: parseInt(formData.discount_percentage || 0),
-                // Filter out empty image URLs from the additional images array
+                gst_rate: overrideGST ? parseFloat(formData.gst_rate || 0) : null,
+                hsn_code: overrideGST ? formData.hsn_code : null,
+                product_type: formData.product_type,
                 images: formData.images.filter(url => url.trim() !== '')
             };
 
-            // 1. Upload Main Image if changed/new
+            // 1. Upload Main Image
             if (mainImageFile) {
                 const fileName = `${Date.now()}_${mainImageFile.name.replace(/\s+/g, '-')}`;
-                try {
-                    const publicUrl = await uploadFile(mainImageFile, 'products', fileName);
-                    payload.image = publicUrl;
-                } catch (uploadError) {
-                    console.error("Main image upload failed:", uploadError);
-                    alert("Failed to upload main image. Please try again.");
-                    setLoading(false);
-                    return;
-                }
+                const publicUrl = await uploadFile(mainImageFile, 'products', fileName);
+                finalPayload.image = publicUrl;
             }
 
-            // 2. Upload Additional Images if changed/new
-            // We need to resolve all promises
-            const newImages = [...payload.images];
-
-            // Handle existing image slots that have new files
+            // 2. Upload Additional Images
+            const newImages = [...finalPayload.images];
             const uploadPromises = Object.entries(additionalImageFiles).map(async ([index, file]) => {
                 const fileName = `${Date.now()}_more_${index}_${file.name.replace(/\s+/g, '-')}`;
-                try {
-                    const publicUrl = await uploadFile(file, 'products', fileName);
-                    // If the index exists in the array, replace it. If it's a new add, append via logic below?
-                    // Actually, the formData.images has placeholders or old callbacks.
-                    // The easiest way is to trust the index mapping from the UI.
-                    if (index < newImages.length) {
-                        newImages[index] = publicUrl;
-                    } else {
-                        // This case happens if we added a new slot and immediately uploaded
-                        // But wait, the UI logic for adding slots pushes an empty string to formData.images
-                        // So the index *should* exist.
-                        newImages[parseInt(index)] = publicUrl;
-                    }
-                } catch (err) {
-                    console.error(`Image ${index} upload failed:`, err);
-                    throw err; // Fail whole op?
+                const publicUrl = await uploadFile(file, 'products', fileName);
+                if (index < newImages.length) {
+                    newImages[index] = publicUrl;
+                } else {
+                    newImages[parseInt(index)] = publicUrl;
                 }
             });
 
             await Promise.all(uploadPromises);
-            payload.images = newImages.filter(img => img && img.trim() !== '');
+            finalPayload.images = newImages.filter(img => img && img.trim() !== '');
 
             let productId = id;
             if (isEditMode) {
-                await updateProduct(id, payload);
+                await updateProduct(id, finalPayload);
             } else {
-                const newProduct = await addProduct(payload);
+                const newProduct = await addProduct(finalPayload);
                 if (newProduct && newProduct[0]) {
                     productId = newProduct[0].id;
                 }
             }
 
             // Handle Variants
-            if (hasVariants) {
-                for (const variant of variants) {
-                    const variantPayload = {
-                        ...variant,
-                        product_id: productId,
-                        price: parseFloat(variant.price || 0),
-                        cost_price: parseFloat(variant.cost_price || 0),
-                        mrp: parseFloat(variant.mrp || 0),
-                        gst_rate: parseFloat(variant.gst_rate || 0),
-                    };
+            for (const variant of variants) {
+                const vSpecs = mapVariantToPayload(variant);
 
-                    if (variant.id && variant.id.includes('-')) {
-                        // It's a temp ID we generated or real ID? 
-                        // Existing IDs from DB are UUIDs. 
-                        // Temp IDs might be 'temp-123'
-                        if (variant.id.startsWith('temp-')) {
-                            // Insert
-                            const { id, ...insertData } = variantPayload; // remove temp id
-                            await addVariant(insertData);
-                        } else {
-                            // Update
-                            await updateVariant(variant.id, variantPayload);
-                        }
-                    } else if (!variant.id) {
-                        await addVariant(variantPayload);
+                const variantPayload = {
+                    ...variant,
+                    product_id: productId,
+                    price: parseFloat(variant.price || 0),
+                    cost_price: parseFloat(variant.cost_price || 0),
+                    mrp: parseFloat(variant.mrp || 0),
+                    gst_rate: parseFloat(variant.gst_rate || 0),
+
+                    weight: vSpecs.weight,
+                    volume: vSpecs.volume,
+                    pieces: vSpecs.pieces,
+                    dimensions: vSpecs.dimensions,
+
+                    // Remove helper keys
+                    net_qty: undefined, net_unit: undefined,
+                    shipping_weight_value: undefined, shipping_weight_unit: undefined,
+                    dimensions_value: undefined, dimensions_unit: undefined,
+                };
+
+                // Clean undefineds
+                Object.keys(variantPayload).forEach(key => variantPayload[key] === undefined && delete variantPayload[key]);
+
+                if (variant.id && variant.id.includes('-')) {
+                    if (variant.id.startsWith('temp-')) {
+                        const { id, ...insertData } = variantPayload;
+                        await addVariant(insertData);
                     } else {
-                        // It is a real UUID, update it
                         await updateVariant(variant.id, variantPayload);
                     }
+                } else {
+                    if (variant.id) await updateVariant(variant.id, variantPayload);
                 }
             }
 
@@ -269,405 +381,658 @@ const ProductForm = () => {
         }
     };
 
-    return (
-        <div className="container mx-auto px-4 py-8 max-w-2xl">
-            <h1 className="text-3xl font-serif font-bold text-sage-900 mb-8">
-                {isEditMode ? 'Edit Product' : 'Add New Product'}
-            </h1>
+    // --- Sub-Components for Tabs ---
 
-            <form onSubmit={handleSubmit} className="bg-white p-8 rounded-xl shadow-sm border border-sage-100 space-y-6">
-                <div>
-                    <label className="block text-sm font-medium text-stone-700 mb-1">Product Name</label>
-                    <div className="flex gap-2">
-                        <input
-                            type="text"
-                            name="name"
-                            value={formData.name}
-                            onChange={handleChange}
-                            className="flex-1 px-3 py-2 border border-sage-200 rounded-md focus:outline-none focus:ring-2 focus:ring-sage-500 disabled:bg-gray-100"
-                            required
-                        />
-                        <button
-                            type="button"
-                            onClick={handleAIGenerate}
-                            disabled={generating || isSeoWriter}
-                            className="bg-purple-100 text-purple-700 px-4 py-2 rounded-md font-medium hover:bg-purple-200 transition-colors flex items-center gap-2 disabled:opacity-50"
-                            title="Auto-fill details with AI"
-                        >
-                            <Sparkles className="w-4 h-4" />
-                            {generating ? 'Generating...' : 'Auto-Fill with AI'}
-                        </button>
+    const BasicDetailsTab = () => (
+        <div className="space-y-6">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <div className="md:col-span-2 space-y-4">
+                    <div>
+                        <label className="block text-sm font-medium text-stone-700 mb-1">Product Name</label>
+                        <div className="flex gap-2">
+                            <input
+                                type="text"
+                                name="name"
+                                value={formData.name}
+                                onChange={handleChange}
+                                placeholder="e.g. Luxury Face Cream"
+                                className="flex-1 px-4 py-2 border border-stone-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-sage-500"
+                                required
+                            />
+                            <button
+                                type="button"
+                                onClick={handleAIGenerate}
+                                disabled={generating || isSeoWriter}
+                                className="bg-purple-50 text-purple-700 px-4 py-2 rounded-lg font-medium hover:bg-purple-100 transition-colors flex items-center gap-2 disabled:opacity-50 border border-purple-200"
+                                title="Auto-fill details with AI"
+                            >
+                                <Sparkles className="w-4 h-4" />
+                                {generating ? '...' : 'AI Fill'}
+                            </button>
+                        </div>
+                    </div>
+
+                    <div>
+                        <label className="block text-sm font-medium text-stone-700 mb-1">Description</label>
+                        <div className="bg-white rounded-lg border border-stone-200 overflow-hidden">
+                            <ReactQuill
+                                theme="snow"
+                                value={formData.description}
+                                onChange={(value) => setFormData(prev => ({ ...prev, description: value }))}
+                                className="min-h-[200px]"
+                                modules={{
+                                    toolbar: [
+                                        [{ 'header': [1, 2, 3, false] }],
+                                        ['bold', 'italic', 'underline', 'strike'],
+                                        [{ 'list': 'ordered' }, { 'list': 'bullet' }],
+                                        ['clean']
+                                    ],
+                                }}
+                            />
+                        </div>
                     </div>
                 </div>
 
-                <div>
-                    <label className="block text-sm font-medium text-stone-700 mb-1">Description</label>
-                    <div className="bg-white">
-                        <ReactQuill
-                            theme="snow"
-                            value={formData.description}
-                            onChange={(value) => setFormData(prev => ({ ...prev, description: value }))}
-                            className="h-64 mb-12"
-                            modules={{
-                                toolbar: [
-                                    [{ 'header': [1, 2, 3, false] }],
-                                    ['bold', 'italic', 'underline', 'strike'],
-                                    [{ 'list': 'ordered' }, { 'list': 'bullet' }],
-                                    ['clean']
-                                ],
+                <div className="space-y-4">
+                    <div className="bg-stone-50 p-4 rounded-xl border border-stone-100 space-y-4">
+                        <h3 className="font-semibold text-stone-800 flex items-center gap-2">
+                            <Settings className="w-4 h-4" /> Configuration
+                        </h3>
+                        <div>
+                            <label className="block text-sm font-medium text-stone-700 mb-1">Product Type</label>
+                            <select
+                                name="product_type"
+                                value={formData.product_type}
+                                onChange={handleChange}
+                                className="w-full px-3 py-2 border border-stone-200 rounded-md focus:outline-none focus:ring-2 focus:ring-sage-500"
+                            >
+                                <option value="Cosmetic">Cosmetic</option>
+                                <option value="Medicine">Medicine</option>
+                                <option value="Consumable">Consumable</option>
+                                <option value="Equipment">Equipment</option>
+                                <option value="Service">Service</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label className="block text-sm font-medium text-stone-700 mb-1">Brand</label>
+                            <select
+                                name="brand"
+                                value={formData.brand || ''}
+                                onChange={handleChange}
+                                disabled={isSeoWriter}
+                                className="w-full px-3 py-2 border border-stone-200 rounded-md focus:outline-none focus:ring-2 focus:ring-sage-500 disabled:bg-gray-100"
+                            >
+                                <option value="">Select Brand</option>
+                                {brands.map(b => (
+                                    <option key={b.id} value={b.name}>{b.name}</option>
+                                ))}
+                            </select>
+                        </div>
+                        <div>
+                            <label className="block text-sm font-medium text-stone-700 mb-1">Categories</label>
+                            <div className={isSeoWriter ? "opacity-50 pointer-events-none" : ""}>
+                                <MultiSelect
+                                    options={categories}
+                                    value={formData.category}
+                                    onChange={(val) => handleMultiChange('category', val)}
+                                    placeholder="Select Categories"
+                                />
+                            </div>
+                        </div>
+                        <div>
+                            <label className="block text-sm font-medium text-stone-700 mb-1">Health Concerns</label>
+                            <div className={isSeoWriter ? "opacity-50 pointer-events-none" : ""}>
+                                <MultiSelect
+                                    options={concerns}
+                                    value={formData.concern}
+                                    onChange={(val) => handleMultiChange('concern', val)}
+                                    placeholder="Select Concerns"
+                                />
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
+
+    const MediaTab = () => (
+        <div className="space-y-8">
+            {/* Main Image */}
+            <div className="bg-white p-6 rounded-xl border border-stone-200 shadow-sm">
+                <h3 className="text-lg font-serif font-bold text-stone-800 mb-4 flex items-center gap-2">
+                    <ImageIcon className="w-5 h-5 text-sage-600" /> Main Product Image
+                </h3>
+                <div className="flex flex-col md:flex-row gap-6 items-start">
+                    <div className="w-full md:w-1/3">
+                        <div className="aspect-square bg-stone-50 border-2 border-dashed border-stone-300 rounded-xl flex flex-col items-center justify-center relative overflow-hidden group hover:border-sage-400 transition-colors">
+                            {(mainImageFile || formData.image) ? (
+                                <>
+                                    <img
+                                        src={mainImageFile ? URL.createObjectURL(mainImageFile) : formData.image}
+                                        alt="Main Preview"
+                                        className="w-full h-full object-cover"
+                                        onError={(e) => e.target.style.display = 'none'}
+                                    />
+                                    <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                                        <p className="text-white font-medium">Click to Change</p>
+                                    </div>
+                                </>
+                            ) : (
+                                <div className="text-center p-4">
+                                    <UploadCloud className="w-10 h-10 text-stone-400 mx-auto mb-2" />
+                                    <p className="text-stone-500 font-medium">Upload Main Image</p>
+                                    <p className="text-xs text-stone-400 mt-1">SVG, PNG, JPG</p>
+                                </div>
+                            )}
+                            <input
+                                type="file"
+                                accept="image/*"
+                                onChange={(e) => {
+                                    if (e.target.files && e.target.files[0]) {
+                                        setMainImageFile(e.target.files[0]);
+                                    }
+                                }}
+                                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                            />
+                        </div>
+                        <div className="mt-3">
+                            <label className="block text-xs font-medium text-stone-500 mb-1">OR enter URL</label>
+                            <input
+                                type="url"
+                                value={formData.image || ''}
+                                onChange={(e) => {
+                                    setFormData(prev => ({ ...prev, image: e.target.value }));
+                                    setMainImageFile(null);
+                                }}
+                                placeholder="https://..."
+                                className="w-full px-3 py-2 border border-stone-200 rounded-md text-xs"
+                            />
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            {/* Gallery */}
+            <div className="bg-white p-6 rounded-xl border border-stone-200 shadow-sm">
+                <h3 className="text-lg font-serif font-bold text-stone-800 mb-4 flex items-center gap-2">
+                    <LayoutDashboard className="w-5 h-5 text-sage-600" /> Gallery Images
+                </h3>
+
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    {formData.images && formData.images.map((img, index) => (
+                        <div key={index} className="relative group aspect-square bg-stone-50 rounded-lg border border-stone-200 overflow-hidden">
+                            <img
+                                src={additionalImageFiles[index] ? URL.createObjectURL(additionalImageFiles[index]) : img}
+                                alt={`Gallery ${index}`}
+                                className="w-full h-full object-cover"
+                                onError={(e) => e.target.src = 'https://via.placeholder.com/150?text=No+Image'}
+                            />
+                            <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center gap-2">
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        const newImages = formData.images.filter((_, i) => i !== index);
+                                        setFormData(prev => ({ ...prev, images: newImages }));
+                                    }}
+                                    className="bg-red-500 text-white p-2 rounded-full hover:bg-red-600"
+                                    title="Remove Image"
+                                >
+                                    <Trash2 className="w-4 h-4" />
+                                </button>
+                                <div className="text-xs text-white max-w-[90%] truncate px-2">
+                                    {additionalImageFiles[index] ? 'Local File' : 'URL Link'}
+                                </div>
+                            </div>
+                        </div>
+                    ))}
+
+                    {/* Add New Button */}
+                    <div className="relative aspect-square bg-stone-50 border-2 border-dashed border-stone-300 rounded-lg flex flex-col items-center justify-center hover:border-sage-400 transition-colors cursor-pointer text-stone-500 hover:text-sage-600">
+                        <UploadCloud className="w-8 h-8 mb-2" />
+                        <span className="text-xs font-semibold">Add Images</span>
+                        <input
+                            type="file"
+                            multiple
+                            accept="image/*"
+                            className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                            onChange={(e) => {
+                                if (e.target.files && e.target.files.length > 0) {
+                                    const files = Array.from(e.target.files);
+                                    const currentImages = formData.images || [];
+                                    const startIndex = currentImages.length;
+                                    const newImages = [...currentImages, ...files.map(() => '')];
+                                    setFormData(prev => ({ ...prev, images: newImages }));
+                                    setAdditionalImageFiles(prev => {
+                                        const updated = { ...prev };
+                                        files.forEach((file, i) => {
+                                            updated[startIndex + i] = file;
+                                        });
+                                        return updated;
+                                    });
+                                }
                             }}
                         />
                     </div>
                 </div>
+                <div className="mt-4 flex gap-2">
+                    <Button type="button" variant="outline" size="sm" onClick={() => setFormData(prev => ({ ...prev, images: [...(prev.images || []), ''] }))}>
+                        + Add Image URL Slot
+                    </Button>
+                </div>
+            </div>
+        </div>
+    );
 
-                <div className="grid grid-cols-2 gap-4">
+    const PricingTab = () => (
+        <div className="space-y-6 max-w-4xl">
+            <div className="bg-amber-50 p-4 rounded-lg border border-amber-200 mb-4">
+                <p className="text-sm text-amber-800 font-medium">
+                    Note: Base Price and Stock are now managed in the <strong>Variants</strong> tab.
+                    Every product must have at least one variant (e.g., "Standard").
+                </p>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="bg-white p-6 rounded-xl border border-stone-200 shadow-sm space-y-4">
+                    <h3 className="font-bold text-stone-800 flex items-center gap-2">
+                        <DollarSign className="w-4 h-4" /> Discounts & Offers
+                    </h3>
+
                     <div>
-                        <label className="block text-sm font-medium text-stone-700 mb-1">Price (Rs.)</label>
+                        <label className="block text-sm font-medium text-stone-700 mb-1">Discount Percentage (%)</label>
                         <input
                             type="number"
-                            name="price"
-                            value={formData.price}
-                            disabled={true}
-                            placeholder="Set in Inventory"
-                            title="Manage Price in Inventory"
-                            className="w-full px-3 py-2 border border-sage-200 rounded-md focus:outline-none focus:ring-2 focus:ring-sage-500 disabled:bg-gray-100 disabled:text-gray-500"
-                            required
-                        />
-                    </div>
-                    <div>
-                        <label className="block text-sm font-medium text-stone-700 mb-1">Categories</label>
-                        <div className={isSeoWriter ? "opacity-50 pointer-events-none" : ""}>
-                            <MultiSelect
-                                options={categories}
-                                value={formData.category}
-                                onChange={(val) => handleMultiChange('category', val)}
-                                placeholder="Select Categories"
-                            />
-                        </div>
-                    </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-4">
-                    <div>
-                        <label className="block text-sm font-medium text-stone-700 mb-1">Brand</label>
-                        <select
-                            name="brand"
-                            value={formData.brand || ''}
+                            name="discount_percentage"
+                            value={formData.discount_percentage}
                             onChange={handleChange}
-                            disabled={isSeoWriter}
-                            className="w-full px-3 py-2 border border-sage-200 rounded-md focus:outline-none focus:ring-2 focus:ring-sage-500 disabled:bg-gray-100 disabled:text-gray-500"
-                            required
-                        >
-                            <option value="">Select Brand</option>
-                            {brands.map(b => (
-                                <option key={b.id} value={b.name}>{b.name}</option>
-                            ))}
-                        </select>
-                    </div>
-                    <div>
-                        <label className="block text-sm font-medium text-stone-700 mb-1">Health Concerns</label>
-                        <div className={isSeoWriter ? "opacity-50 pointer-events-none" : ""}>
-                            <MultiSelect
-                                options={concerns}
-                                value={formData.concern}
-                                onChange={(val) => handleMultiChange('concern', val)}
-                                placeholder="Select Concerns"
-                            />
-                        </div>
-                    </div>
-                </div>
-
-                {/* Discount Section */}
-                {isEditMode && formData.discount_percentage > 0 && (
-                    <div className="bg-orange-50 p-4 rounded-md border border-orange-200 flex items-center justify-between">
-                        <div>
-                            <span className="text-sm font-bold text-orange-800">Active Discount: {formData.discount_percentage}% OFF</span>
-                            <p className="text-xs text-orange-600">Sale Price: Rs. {formData.disc_price}</p>
-                        </div>
-                        <Button type="button" variant="outline" size="sm" onClick={removeDiscount} className="text-red-600 border-red-200 hover:bg-red-50">
-                            <Trash2 size={14} className="mr-1" />
-                            Remove Discount
-                        </Button>
-                    </div>
-                )}
-
-                <div className="grid grid-cols-2 gap-4">
-                    <div>
-                        <label className="block text-sm font-medium text-stone-700 mb-1">Stock Status</label>
-                        <select
-                            name="stock_status"
-                            value={formData.stock_status || 'In Stock'}
-                            disabled={true}
-                            className="w-full px-3 py-2 border border-sage-200 rounded-md focus:outline-none focus:ring-2 focus:ring-sage-500 disabled:bg-gray-100 disabled:text-gray-500"
-                        >
-                            <option value="In Stock">In Stock</option>
-                            <option value="Low Stock">Low Stock</option>
-                            <option value="Out of Stock">Out of Stock</option>
-                        </select>
-                    </div>
-                    <div>
-                        <label className="block text-sm font-medium text-stone-700 mb-1">Stock Quantity</label>
-                        <input
-                            type="number"
-                            name="stock_quantity"
-                            value={formData.stock_quantity}
-                            disabled={true}
-                            placeholder="Set in Inventory"
-                            title="Manage Stock in Inventory"
-                            className="w-full px-3 py-2 border border-sage-200 rounded-md focus:outline-none focus:ring-2 focus:ring-sage-500 disabled:bg-gray-100 disabled:text-gray-500"
-                            required
+                            className="w-full px-3 py-2 border border-stone-200 rounded-md focus:outline-none focus:ring-2 focus:ring-sage-500"
                         />
                     </div>
-                </div>
 
-                {/* Variants Section */}
-                <div className="border-t border-sage-100 pt-6 mb-6">
-                    <div className="flex items-center justify-between mb-4">
-                        <div>
-                            <h3 className="text-lg font-serif font-bold text-sage-900">Product Variants</h3>
-                            <p className="text-sm text-stone-500">Enable this if the product has multiple options (e.g., Sizes, Colors).</p>
-                        </div>
-                        <div className="flex items-center">
-                            <input
-                                type="checkbox"
-                                id="hasVariants"
-                                checked={hasVariants}
-                                onChange={(e) => setHasVariants(e.target.checked)}
-                                className="mr-2 h-5 w-5 text-saffron-600 focus:ring-saffron-500 border-gray-300 rounded"
-                            />
-                            <label htmlFor="hasVariants" className="font-medium text-sage-900">Enable Variants</label>
-                        </div>
-                    </div>
-
-                    {hasVariants && (
-                        <div className="space-y-4 bg-sage-50 p-4 rounded-lg">
-                            {variants.map((variant, index) => (
-                                <div key={variant.id || index} className="grid grid-cols-2 md:grid-cols-4 gap-3 bg-white p-3 rounded shadow-sm border border-gray-100 relative">
-                                    <div>
-                                        <label className="text-xs font-medium text-gray-500">Variant Name (e.g. 100g)</label>
-                                        <input
-                                            type="text"
-                                            value={variant.name}
-                                            onChange={(e) => {
-                                                const newV = [...variants];
-                                                newV[index].name = e.target.value;
-                                                setVariants(newV);
-                                            }}
-                                            placeholder="Size / Color"
-                                            className="w-full text-sm border-gray-200 rounded p-1"
-                                        />
-                                    </div>
-                                    <div>
-                                        <label className="text-xs font-medium text-gray-500">SKU</label>
-                                        <input
-                                            type="text"
-                                            value={variant.sku}
-                                            onChange={(e) => {
-                                                const newV = [...variants];
-                                                newV[index].sku = e.target.value;
-                                                setVariants(newV);
-                                            }}
-                                            placeholder="SKU-123"
-                                            className="w-full text-sm border-gray-200 rounded p-1"
-                                        />
-                                    </div>
-                                    <div>
-                                        <label className="text-xs font-medium text-gray-500">Price</label>
-                                        <input
-                                            type="number"
-                                            value={variant.price}
-                                            disabled={true}
-                                            placeholder="Set in Inventory"
-                                            className="w-full text-sm border-gray-200 rounded p-1 bg-gray-50 text-gray-400"
-                                            title="Manage Price in Inventory"
-                                        />
-                                    </div>
-                                    <div>
-                                        <label className="text-xs font-medium text-gray-500">Stock</label>
-                                        <input
-                                            type="number"
-                                            value={variant.stock_quantity}
-                                            disabled={true}
-                                            placeholder="Use Inventory"
-                                            className="w-full text-sm border-gray-200 rounded p-1 bg-gray-50 text-gray-400"
-                                            title="Manage stock specifically in Inventory page"
-                                        />
-                                    </div>
-
-                                    {/* Accounting / GST Extras */}
-                                    <div className="col-span-2 md:col-span-1">
-                                        <label className="text-xs font-medium text-gray-500">Cost Price</label>
-                                        <input
-                                            type="number"
-                                            value={variant.cost_price}
-                                            disabled={true}
-                                            className="w-full text-sm border-gray-200 rounded p-1 bg-gray-50 text-gray-400"
-                                            title="Manage Cost in Inventory"
-                                        />
-                                    </div>
-                                    <div className="col-span-2 md:col-span-1">
-                                        <label className="text-xs font-medium text-gray-500">GST %</label>
-                                        <select
-                                            value={variant.gst_rate}
-                                            disabled={true}
-                                            className="w-full text-sm border-gray-200 rounded p-1 bg-gray-50 text-gray-400"
-                                            title="Manage GST in Inventory"
-                                        >
-                                            <option value="0">0%</option>
-                                            <option value="5">5%</option>
-                                            <option value="12">12%</option>
-                                            <option value="18">18%</option>
-                                            <option value="28">28%</option>
-                                        </select>
-                                    </div>
-                                    <div className="col-span-2 md:col-span-1">
-                                        <label className="text-xs font-medium text-gray-500">HSN Code</label>
-                                        <input
-                                            type="text"
-                                            value={variant.hsn_code || ''}
-                                            disabled={true}
-                                            placeholder="HSN"
-                                            className="w-full text-sm border-gray-200 rounded p-1 bg-gray-50 text-gray-400"
-                                            title="Manage HSN in Inventory"
-                                        />
-                                    </div>
-                                    <div className="col-span-2 md:col-span-1">
-                                        <label className="text-xs font-medium text-gray-500">Min Stock (Reorder Level)</label>
-                                        <input
-                                            type="number"
-                                            value={variant.min_stock_level || 10}
-                                            disabled={true}
-                                            className="w-full text-sm border-gray-200 rounded p-1 bg-gray-50 text-gray-400"
-                                            title="Manage Min Stock in Inventory"
-                                        />
-                                    </div>
-                                    <div className="col-span-2 md:col-span-1">
-                                        <label className="text-xs font-medium text-gray-500">Reorder Qty</label>
-                                        <input
-                                            type="number"
-                                            value={variant.reorder_quantity || 50}
-                                            disabled={true}
-                                            className="w-full text-sm border-gray-200 rounded p-1 bg-gray-50 text-gray-400"
-                                            title="Manage Reorder Qty in Inventory"
-                                        />
-                                    </div>
-
-                                    <button
-                                        type="button"
-                                        onClick={() => {
-                                            const newV = variants.filter((_, i) => i !== index);
-                                            setVariants(newV);
-                                        }}
-                                        className="absolute -top-2 -right-2 bg-red-100 text-red-600 rounded-full p-1 hover:bg-red-200"
-                                    >
-                                        <X size={12} />
-                                    </button>
-                                </div>
-                            ))}
-                            <Button
-                                type="button"
-                                variant="outline"
-                                onClick={() => setVariants([...variants, { id: `temp-${Date.now()}`, name: '', sku: '', price: formData.price || '', stock_quantity: 0, cost_price: 0, gst_rate: 18, hsn_code: '', min_stock_level: 10, reorder_quantity: 50 }])}
-                                className="w-full dashed border-2 border-sage-300 text-sage-600"
-                            >
-                                + Add Variant
-                            </Button>
+                    {isEditMode && formData.discount_percentage > 0 && (
+                        <div className="bg-orange-50 p-3 rounded-lg border border-orange-100 flex items-center justify-between">
+                            <div>
+                                <span className="text-sm font-bold text-orange-800 block">Active Discount: {formData.discount_percentage}% OFF</span>
+                                <span className="text-xs text-orange-600">Applied to all variant prices automatically.</span>
+                            </div>
+                            <button type="button" onClick={removeDiscount} className="text-red-500 hover:text-red-700 p-1">
+                                <Trash2 className="w-4 h-4" />
+                            </button>
                         </div>
                     )}
                 </div>
+            </div>
 
+            <div className="bg-stone-50 p-6 rounded-xl border border-stone-200">
+                <div className="flex items-center justify-between mb-4">
+                    <h3 className="font-bold text-stone-800">Tax & GST</h3>
+                    <div className="flex items-center gap-2">
+                        <input
+                            type="checkbox"
+                            id="overrideGST"
+                            checked={overrideGST}
+                            onChange={(e) => setOverrideGST(e.target.checked)}
+                            className="h-4 w-4 text-sage-600 focus:ring-sage-500 border-gray-300 rounded"
+                        />
+                        <label htmlFor="overrideGST" className="text-sm font-medium text-stone-700 cursor-pointer">
+                            Override GST at Product Level
+                        </label>
+                    </div>
+                </div>
+                <div className={`grid grid-cols-2 gap-4 transition-opacity ${!overrideGST ? 'opacity-50 pointer-events-none' : ''}`}>
+                    <div>
+                        <label className="block text-sm font-medium text-stone-700 mb-1">HSN Code</label>
+                        <input
+                            type="text"
+                            name="hsn_code"
+                            value={formData.hsn_code || ''}
+                            onChange={handleChange}
+                            className="w-full px-3 py-2 border border-stone-200 rounded-md focus:outline-none focus:ring-2 focus:ring-sage-500 bg-white"
+                        />
+                    </div>
+                    <div>
+                        <label className="block text-sm font-medium text-stone-700 mb-1">GST Rate (%)</label>
+                        <select
+                            name="gst_rate"
+                            value={formData.gst_rate || ''}
+                            onChange={handleChange}
+                            className="w-full px-3 py-2 border border-stone-200 rounded-md focus:outline-none focus:ring-2 focus:ring-sage-500 bg-white"
+                        >
+                            <option value="">Default</option>
+                            <option value="0">0% (Exempt)</option>
+                            <option value="5">5%</option>
+                            <option value="12">12%</option>
+                            <option value="18">18%</option>
+                            <option value="28">28%</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
+
+    const SpecsTab = () => (
+        <div className="bg-white p-6 rounded-xl border border-stone-200 shadow-sm max-w-4xl">
+            <h3 className="text-lg font-serif font-bold text-stone-800 mb-6">General Specifications</h3>
+
+            <div className="mb-4 bg-blue-50 p-3 rounded text-sm text-blue-700">
+                Specific physical attributes like Net Quantity (Weight/Volume) are now managed per <strong>Variant</strong>.
+            </div>
+
+            <div>
+                <label className="block text-sm font-medium text-stone-700 mb-1">Other / Custom Specifications</label>
+                <textarea
+                    name="specifications"
+                    value={formData.specifications || ''}
+                    onChange={handleChange}
+                    rows="4"
+                    placeholder="Additional details... (e.g. Shelf Life: 24 Months, Material: Glass)"
+                    className="w-full px-3 py-2 border border-stone-200 rounded-md focus:outline-none focus:ring-2 focus:ring-sage-500 bg-stone-50"
+                />
+            </div>
+        </div>
+    );
+
+    const VariantsTab = () => (
+        <div className="space-y-6">
+            <div className="flex items-center justify-between bg-purple-50 p-4 rounded-lg border border-purple-100">
                 <div>
-                    <label className="block text-sm font-medium text-stone-700 mb-1">Features (One per line)</label>
-                    <textarea
-                        name="features"
-                        value={formData.features || ''}
+                    <h3 className="text-lg font-bold text-purple-900">Product Variants</h3>
+                    <p className="text-sm text-purple-700">Manage pricing, stock, and specs for each variation.</p>
+                </div>
+            </div>
+
+            <div className="space-y-4">
+                {variants.map((variant, index) => (
+                    <div key={variant.id || index} className="bg-white p-4 rounded-xl border border-stone-200 shadow-sm relative group hover:border-sage-300 transition-colors">
+                        <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-4">
+                            <div className='md:col-span-2'>
+                                <label className="text-xs font-medium text-stone-500 uppercase tracking-wider mb-1 block">Variant Name</label>
+                                <input
+                                    type="text"
+                                    value={variant.name}
+                                    onChange={(e) => {
+                                        const newV = [...variants];
+                                        newV[index].name = e.target.value;
+                                        setVariants(newV);
+                                    }}
+                                    placeholder="Standard, Small, Red, etc."
+                                    className="w-full text-sm font-semibold border-b border-stone-200 focus:border-sage-500 outline-none py-1"
+                                />
+                            </div>
+                            <div className='md:col-span-1'>
+                                <label className="text-xs font-medium text-stone-500 uppercase tracking-wider mb-1 block">SKU</label>
+                                <input
+                                    type="text"
+                                    value={variant.sku}
+                                    onChange={(e) => {
+                                        const newV = [...variants];
+                                        newV[index].sku = e.target.value;
+                                        setVariants(newV);
+                                    }}
+                                    placeholder="Unique code"
+                                    className="w-full text-sm border-b border-stone-200 focus:border-sage-500 outline-none py-1"
+                                />
+                            </div>
+                            <div className='md:col-span-1'>
+                                <label className="text-xs font-medium text-stone-500 uppercase tracking-wider mb-1 block">Price</label>
+                                <input
+                                    type="number"
+                                    value={variant.price}
+                                    onChange={(e) => {
+                                        const newV = [...variants];
+                                        newV[index].price = e.target.value;
+                                        setVariants(newV);
+                                    }}
+                                    placeholder="0.00"
+                                    className="w-full text-sm border-b border-stone-200 focus:border-sage-500 outline-none py-1"
+                                />
+                            </div>
+                            <div className='md:col-span-1'>
+                                <label className="text-xs font-medium text-stone-500 uppercase tracking-wider mb-1 block">Stock</label>
+                                <span className="text-sm text-stone-400 block py-1">{variant.stock_quantity || 0} (Inv)</span>
+                            </div>
+                        </div>
+
+                        {/* Refined Fields: Net Qty, Pack, Shipping Weight, Dimensions */}
+                        <div className="bg-stone-50 p-3 rounded-lg grid grid-cols-2 lg:grid-cols-4 gap-3 items-end">
+
+                            {/* 1. Net Quantity (Content Size for End User) */}
+                            <div>
+                                <label className="text-[10px] uppercase text-stone-500 font-bold mb-1 block">Net Qty (Size)</label>
+                                <div className="flex bg-white border border-stone-200 rounded overflow-hidden h-8">
+                                    <input
+                                        value={variant.net_qty || ''}
+                                        onChange={(e) => {
+                                            const newV = [...variants];
+                                            newV[index].net_qty = e.target.value;
+                                            setVariants(newV);
+                                        }}
+                                        className="w-full px-2 text-sm outline-none"
+                                        placeholder="100, 50, etc."
+                                    />
+                                    <select
+                                        value={variant.net_unit || 'g'}
+                                        onChange={(e) => {
+                                            const newV = [...variants];
+                                            newV[index].net_unit = e.target.value;
+                                            setVariants(newV);
+                                        }}
+                                        className="bg-stone-100 border-l border-stone-200 text-[10px] px-1 font-medium outline-none"
+                                    >
+                                        <optgroup label="Mass">
+                                            <option value="g">g</option>
+                                            <option value="kg">kg</option>
+                                            <option value="mg">mg</option>
+                                        </optgroup>
+                                        <optgroup label="Liquid">
+                                            <option value="ml">ml</option>
+                                            <option value="l">l</option>
+                                        </optgroup>
+                                        <optgroup label="Pack">
+                                            <option value="pcs">pcs</option>
+                                            <option value="tabs">tabs</option>
+                                            <option value="caps">caps</option>
+                                            <option value="strips">strips</option>
+                                            <option value="pack">pack</option>
+                                        </optgroup>
+                                    </select>
+                                </div>
+                            </div>
+
+                            {/* 2. Pieces / pack */}
+                            <div>
+                                <label className="text-[10px] uppercase text-stone-500 font-bold mb-1 block">Pieces / Pack</label>
+                                <input
+                                    type="number"
+                                    value={variant.pieces || ''}
+                                    onChange={(e) => {
+                                        const newV = [...variants];
+                                        newV[index].pieces = e.target.value;
+                                        setVariants(newV);
+                                    }}
+                                    className="w-full bg-white border border-stone-200 rounded px-2 text-sm h-8"
+                                    placeholder="No. of items"
+                                />
+                            </div>
+
+                            {/* 3. Shipping Weight (Mandatory) */}
+                            <div>
+                                <label className="text-[10px] uppercase text-red-500 font-bold mb-1 block">Shipping Weight *</label>
+                                <div className="flex bg-white border border-red-100 rounded overflow-hidden h-8">
+                                    <input
+                                        value={variant.shipping_weight_value || ''}
+                                        onChange={(e) => {
+                                            const newV = [...variants];
+                                            newV[index].shipping_weight_value = e.target.value;
+                                            setVariants(newV);
+                                        }}
+                                        className="w-full px-2 text-sm outline-none"
+                                        placeholder="Required"
+                                        required
+                                    />
+                                    <select
+                                        value={variant.shipping_weight_unit || 'g'}
+                                        onChange={(e) => {
+                                            const newV = [...variants];
+                                            newV[index].shipping_weight_unit = e.target.value;
+                                            setVariants(newV);
+                                        }}
+                                        className="bg-stone-100 border-l border-stone-200 text-xs px-1 font-medium outline-none"
+                                    >
+                                        <option value="g">g</option>
+                                        <option value="kg">kg</option>
+                                        <option value="lb">lb</option>
+                                    </select>
+                                </div>
+                            </div>
+
+                            {/* 4. Dimensions */}
+                            <div>
+                                <label className="text-[10px] uppercase text-stone-500 font-bold mb-1 block">Dimensions (LxWxH)</label>
+                                <div className="flex bg-white border border-stone-200 rounded overflow-hidden h-8">
+                                    <input
+                                        value={variant.dimensions_value || ''}
+                                        onChange={(e) => {
+                                            const newV = [...variants];
+                                            newV[index].dimensions_value = e.target.value;
+                                            setVariants(newV);
+                                        }}
+                                        className="w-full px-2 text-sm outline-none"
+                                        placeholder="10x10x10"
+                                    />
+                                    <select
+                                        value={variant.dimensions_unit || 'cm'}
+                                        onChange={(e) => {
+                                            const newV = [...variants];
+                                            newV[index].dimensions_unit = e.target.value;
+                                            setVariants(newV);
+                                        }}
+                                        className="bg-stone-100 border-l border-stone-200 text-xs px-1 font-medium outline-none"
+                                    >
+                                        <option value="cm">cm</option>
+                                        <option value="m">m</option>
+                                        <option value="in">in</option>
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Reorder Level - moved down slightly */}
+                        <div className="flex gap-4 items-center bg-stone-50 p-3 rounded-lg mt-2">
+                            <div>
+                                <label className="text-[10px] uppercase text-stone-500 font-bold mb-1 block">Reorder Level</label>
+                                <input
+                                    value={variant.min_stock_level || 10}
+                                    onChange={(e) => {
+                                        const newV = [...variants];
+                                        newV[index].min_stock_level = e.target.value;
+                                        setVariants(newV);
+                                    }}
+                                    className="w-20 bg-white border border-stone-200 rounded px-2 text-sm h-8"
+                                />
+                            </div>
+                        </div>
+
+                        {/* Actions */}
+                        {variants.length > 1 && (
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    if (confirm("Delete this variant?")) {
+                                        const newV = variants.filter((_, i) => i !== index);
+                                        setVariants(newV);
+                                    }
+                                }}
+                                className="absolute top-2 right-2 text-red-300 hover:text-red-500"
+                            >
+                                <X size={16} />
+                            </button>
+                        )}
+                    </div>
+                ))}
+
+                <button
+                    type="button"
+                    onClick={() => setVariants([...variants, {
+                        id: `temp-${Date.now()}`,
+                        name: '', sku: '',
+                        price: variants[0]?.price || '',
+                        stock_quantity: 0, cost_price: 0, gst_rate: 18, hsn_code: '',
+                        min_stock_level: 10,
+                        reorder_quantity: 50,
+                        net_qty: '', net_unit: 'g'
+                    }])}
+                    className="w-full py-3 border-2 border-dashed border-sage-300 rounded-xl text-sage-600 font-medium hover:bg-sage-50 transition-colors flex items-center justify-center gap-2"
+                >
+                    <UploadCloud className="w-5 h-5" /> Add New Variant
+                </button>
+            </div>
+        </div>
+    );
+
+    const SEOTab = () => (
+        <div className="space-y-6">
+            <div className="bg-white p-6 rounded-xl border border-stone-200 shadow-sm space-y-4">
+                <h3 className="text-lg font-serif font-bold text-stone-800 flex items-center gap-2">
+                    <Search className="w-5 h-5 text-blue-500" /> Search Engine Optimization
+                </h3>
+                <div>
+                    <label className="block text-sm font-medium text-stone-700 mb-1">SEO Title (Meta Title)</label>
+                    <input
+                        type="text"
+                        name="seo_title"
+                        value={formData.seo_title || ''}
                         onChange={handleChange}
-                        rows="4"
-                        placeholder="- 100% Organic&#10;- Cruelty Free&#10;- Sustainably Sourced"
-                        className="w-full px-3 py-2 border border-sage-200 rounded-md focus:outline-none focus:ring-2 focus:ring-sage-500"
+                        className="w-full px-3 py-2 border border-stone-200 rounded-md focus:outline-none focus:ring-2 focus:ring-sage-500"
                     />
                 </div>
-
                 <div>
-                    <label className="block text-sm font-medium text-stone-700 mb-1">Key Ingredients</label>
-                    <p className="text-xs text-stone-500 mb-1">Format: Name (Benefit). Example: Ashwagandha (Stress Relief), Amla (Immunity)</p>
+                    <label className="block text-sm font-medium text-stone-700 mb-1">Meta Description</label>
                     <textarea
-                        name="ingredients"
-                        value={formData.ingredients || ''}
+                        name="meta_description"
+                        value={formData.meta_description || ''}
                         onChange={handleChange}
                         rows="3"
-                        placeholder="Ashwagandha (Stress Relief), Black Pepper (Digestion)..."
-                        className="w-full px-3 py-2 border border-sage-200 rounded-md focus:outline-none focus:ring-2 focus:ring-sage-500"
+                        className="w-full px-3 py-2 border border-stone-200 rounded-md focus:outline-none focus:ring-2 focus:ring-sage-500"
                     />
                 </div>
-
                 <div>
-                    <label className="block text-sm font-medium text-stone-700 mb-1">Benefits (One per line for bullet points)</label>
-                    <textarea
-                        name="benefits"
-                        value={formData.benefits || ''}
-                        onChange={handleChange}
-                        rows="4"
-                        placeholder="- Reduces stress&#10;- Improves sleep"
-                        className="w-full px-3 py-2 border border-sage-200 rounded-md focus:outline-none focus:ring-2 focus:ring-sage-500"
-                    />
-                </div>
-
-                <div>
-                    <label className="block text-sm font-medium text-stone-700 mb-1">Meta Keywords (Search optimization)</label>
-                    <p className="text-xs text-stone-500 mb-1">Comma separated keywords for search. Ex: immunity, stress, sleep</p>
+                    <label className="block text-sm font-medium text-stone-700 mb-1">Meta Keywords</label>
                     <textarea
                         name="meta_keywords"
                         value={formData.meta_keywords || ''}
                         onChange={handleChange}
                         rows="2"
-                        placeholder="immunity, stress, sleep, herbal"
-                        className="w-full px-3 py-2 border border-sage-200 rounded-md focus:outline-none focus:ring-2 focus:ring-sage-500"
+                        className="w-full px-3 py-2 border border-stone-200 rounded-md focus:outline-none focus:ring-2 focus:ring-sage-500"
                     />
                 </div>
+            </div>
 
+            <div className="bg-white p-6 rounded-xl border border-stone-200 shadow-sm space-y-4">
+                <h3 className="text-lg font-serif font-bold text-stone-800">Marketing & Content</h3>
                 <div>
-                    <label className="block text-sm font-medium text-stone-700 mb-1">Product Specifications (In the box, Weight, etc.)</label>
+                    <label className="block text-sm font-medium text-stone-700 mb-1">Features</label>
                     <textarea
-                        name="specifications"
-                        value={formData.specifications || ''}
+                        name="features"
+                        value={formData.features || ''}
+                        onChange={handleChange}
+                        rows="4"
+                        placeholder="Bullet points..."
+                        className="w-full px-3 py-2 border border-stone-200 rounded-md focus:outline-none focus:ring-2 focus:ring-sage-500"
+                    />
+                </div>
+                <div>
+                    <label className="block text-sm font-medium text-stone-700 mb-1">Ingredients</label>
+                    <textarea
+                        name="ingredients"
+                        value={formData.ingredients || ''}
                         onChange={handleChange}
                         rows="3"
-                        placeholder="In the box: 1 Bottle&#10;Weight: 100g&#10;Shelf Life: 24 Months"
-                        className="w-full px-3 py-2 border border-sage-200 rounded-md focus:outline-none focus:ring-2 focus:ring-sage-500"
-                        required
+                        className="w-full px-3 py-2 border border-stone-200 rounded-md focus:outline-none focus:ring-2 focus:ring-sage-500"
                     />
                 </div>
-
-                <div className="border-t border-sage-100 pt-6">
-                    <h3 className="text-lg font-serif font-bold text-sage-900 mb-4">SEO & Short Description</h3>
-                    <div className="space-y-4">
-                        <div>
-                            <label className="block text-sm font-medium text-stone-700 mb-1">SEO Title (Meta Title)</label>
-                            <input
-                                type="text"
-                                name="seo_title"
-                                value={formData.seo_title || ''}
-                                onChange={handleChange}
-                                placeholder="Custom title for search engines"
-                                className="w-full px-3 py-2 border border-sage-200 rounded-md focus:outline-none focus:ring-2 focus:ring-sage-500"
-                            />
-                        </div>
-
-                        <div>
-                            <label className="block text-sm font-medium text-stone-700 mb-1">Short Description (SEO & Product Page)</label>
-                            <textarea
-                                name="meta_description"
-                                value={formData.meta_description || ''}
-                                onChange={handleChange}
-                                rows="3"
-                                placeholder="Brief summary shown beside product image and in search results..."
-                                className="w-full px-3 py-2 border border-sage-200 rounded-md focus:outline-none focus:ring-2 focus:ring-sage-500"
-                            />
-                        </div>
-                    </div>
-                </div>
-
                 <div>
                     <label className="block text-sm font-medium text-stone-700 mb-1">Usage Instructions</label>
                     <textarea
@@ -675,164 +1040,83 @@ const ProductForm = () => {
                         value={formData.usage || ''}
                         onChange={handleChange}
                         rows="3"
-                        placeholder="Take 1 teaspoon daily..."
-                        className="w-full px-3 py-2 border border-sage-200 rounded-md focus:outline-none focus:ring-2 focus:ring-sage-500"
+                        className="w-full px-3 py-2 border border-stone-200 rounded-md focus:outline-none focus:ring-2 focus:ring-sage-500"
                     />
                 </div>
+            </div>
+        </div>
+    );
 
-                <div>
-                    <label className="block text-sm font-medium text-stone-700 mb-1">Main Product Image</label>
-                    <div className="space-y-2">
-                        {/* File Upload Option */}
-                        <div className="border-2 border-dashed border-sage-200 rounded-lg p-4 text-center hover:bg-sage-50 transition-colors cursor-pointer relative">
-                            <input
-                                type="file"
-                                accept="image/*"
-                                onChange={(e) => {
-                                    if (e.target.files && e.target.files[0]) {
-                                        setMainImageFile(e.target.files[0]);
-                                        // Optional: Clear URL input if file is chosen to avoid confusion, 
-                                        // or keep it for fallback. Let's just set a local preview.
-                                    }
-                                }}
-                                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-                            />
-                            <div className="text-sage-600">
-                                {mainImageFile ? (
-                                    <span className="font-semibold text-sage-800">Selected: {mainImageFile.name}</span>
-                                ) : (
-                                    <span>Click to upload or drag and drop</span>
-                                )}
-                            </div>
-                        </div>
+    // --- Tab Button Component ---
+    const TabButton = ({ id, label, icon: Icon, active }) => (
+        <button
+            type="button"
+            onClick={() => setActiveTab(id)}
+            className={`w-full text-left px-4 py-3 rounded-lg flex items-center gap-3 transition-colors ${active
+                ? 'bg-sage-100 text-sage-900 font-semibold'
+                : 'text-stone-600 hover:bg-stone-50'
+                }`}
+        >
+            <Icon className={`w-5 h-5 ${active ? 'text-sage-700' : 'text-stone-400'}`} />
+            {label}
+        </button>
+    );
 
-                        {/* URL Fallback / Override */}
-                        <div className="flex gap-2 items-center">
-                            <span className="text-xs text-stone-500">OR use URL:</span>
-                            <input
-                                type="url"
-                                name="image"
-                                value={formData.image}
-                                onChange={(e) => {
-                                    setFormData(prev => ({ ...prev, image: e.target.value }));
-                                    setMainImageFile(null); // Clear file if URL is manually edited
-                                }}
-                                className="flex-1 px-3 py-1 border border-sage-200 rounded-md text-sm"
-                                placeholder="https://..."
-                            />
-                        </div>
-
-                        {/* Preview */}
-                        {(mainImageFile || formData.image) && (
-                            <div className="mt-2">
-                                <p className="text-xs text-stone-500 mb-1">Preview:</p>
-                                <img
-                                    src={mainImageFile ? URL.createObjectURL(mainImageFile) : formData.image}
-                                    alt="Preview"
-                                    className="h-32 w-32 object-contain rounded-md border border-stone-200"
-                                    onError={(e) => e.target.style.display = 'none'}
-                                />
-                            </div>
-                        )}
-                    </div>
-                </div>
-
-                <div>
-                    <label className="block text-sm font-medium text-stone-700 mb-2">Additional Images (Gallery)</label>
-                    <div className="space-y-3">
-                        {formData.images && formData.images.map((img, index) => (
-                            <div key={index} className="mb-4 bg-gray-50 p-2 rounded-lg">
-                                <div className="flex gap-2 mb-2">
-                                    <input
-                                        type="url"
-                                        value={img}
-                                        onChange={(e) => {
-                                            const newImages = [...formData.images];
-                                            newImages[index] = e.target.value;
-                                            setFormData(prev => ({ ...prev, images: newImages }));
-                                        }}
-                                        className="flex-1 px-3 py-2 border border-sage-200 rounded-md focus:outline-none focus:ring-2 focus:ring-sage-500"
-                                        placeholder="https://..."
-                                    />
-                                    <button
-                                        type="button"
-                                        onClick={() => {
-                                            const newImages = formData.images.filter((_, i) => i !== index);
-                                            setFormData(prev => ({ ...prev, images: newImages }));
-                                        }}
-                                        className="px-3 py-2 text-red-500 hover:bg-red-50 rounded-lg text-sm font-medium"
-                                    >
-                                        Remove
-                                    </button>
-                                </div>
-                                <div className="ml-1">
-                                    <input
-                                        type="file"
-                                        accept="image/*"
-                                        onChange={(e) => {
-                                            if (e.target.files && e.target.files[0]) {
-                                                setAdditionalImageFiles(prev => ({ ...prev, [index]: e.target.files[0] }));
-                                            }
-                                        }}
-                                        className="text-xs text-stone-500"
-                                    />
-                                    {additionalImageFiles[index] && <span className="text-xs text-green-600 ml-2">File selected: {additionalImageFiles[index].name}</span>}
-                                </div>
-                            </div>
-                        ))}
-                        <div className="flex gap-2 mt-2">
-                            <div className="relative">
-                                <input
-                                    type="file"
-                                    multiple
-                                    accept="image/*"
-                                    className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-                                    onChange={(e) => {
-                                        if (e.target.files && e.target.files.length > 0) {
-                                            const files = Array.from(e.target.files);
-                                            const currentImages = formData.images || [];
-                                            const startIndex = currentImages.length;
-
-                                            // Add empty slots for the new files
-                                            const newImages = [...currentImages, ...files.map(() => '')];
-                                            setFormData(prev => ({ ...prev, images: newImages }));
-
-                                            // Store files map
-                                            setAdditionalImageFiles(prev => {
-                                                const updated = { ...prev };
-                                                files.forEach((file, i) => {
-                                                    updated[startIndex + i] = file;
-                                                });
-                                                return updated;
-                                            });
-                                        }
-                                    }}
-                                />
-                                <Button type="button" variant="secondary" className="pointer-events-none">
-                                    Upload Images (Bulk)
-                                </Button>
-                            </div>
-
-                            <button
-                                type="button"
-                                onClick={() => setFormData(prev => ({ ...prev, images: [...(prev.images || []), ''] }))}
-                                className="text-sm font-bold text-sage-600 hover:text-sage-800 flex items-center gap-1 px-3 py-2"
-                            >
-                                + Add Image URL Row
-                            </button>
+    return (
+        <div className="min-h-screen bg-stone-50 pb-20">
+            {/* Header */}
+            <div className="bg-white border-b border-stone-200 sticky top-0 z-10 px-4 py-3 shadow-sm">
+                <div className="max-w-7xl mx-auto flex items-center justify-between">
+                    <div className="flex items-center gap-4">
+                        <button onClick={() => navigate('/admin/products')} className="p-2 hover:bg-stone-100 rounded-full text-stone-500">
+                            <ChevronLeft />
+                        </button>
+                        <div>
+                            <h1 className="text-xl font-serif font-bold text-stone-800">
+                                {isEditMode ? 'Edit Product' : 'New Product'}
+                            </h1>
+                            <p className="text-xs text-stone-500">{formData.name || 'Untitled Product'}</p>
                         </div>
                     </div>
+                    <div className="flex gap-3">
+                        <Button type="button" variant="outline" onClick={() => navigate('/admin/products')}>
+                            Cancel
+                        </Button>
+                        <Button type="button" onClick={handleSubmit} disabled={loading} className="flex items-center gap-2">
+                            <Save className="w-4 h-4" />
+                            {loading ? 'Saving...' : 'Save Product'}
+                        </Button>
+                    </div>
                 </div>
+            </div>
 
-                <div className="flex gap-4 pt-4">
-                    <Button type="submit" disabled={loading} className="flex-1">
-                        {loading ? 'Saving...' : (isEditMode ? 'Update Product' : 'Create Product')}
-                    </Button>
-                    <Button type="button" variant="outline" onClick={() => navigate('/admin/products')}>
-                        Cancel
-                    </Button>
+            <div className="max-w-7xl mx-auto px-4 py-8">
+                <div className="flex flex-col lg:flex-row gap-8">
+                    {/* Sidebar Tabs */}
+                    <div className="w-full lg:w-64 flex-shrink-0">
+                        <div className="bg-white rounded-xl border border-stone-200 p-2 space-y-1 sticky top-24">
+                            <TabButton id="basic" label="Basic Details" icon={LayoutDashboard} active={activeTab === 'basic'} />
+                            <TabButton id="media" label="Media & Images" icon={ImageIcon} active={activeTab === 'media'} />
+                            <TabButton id="variants" label="Variants" icon={Settings} active={activeTab === 'variants'} />
+                            <TabButton id="pricing" label="Tax & Accounting" icon={DollarSign} active={activeTab === 'pricing'} />
+                            <TabButton id="specs" label="Specifications" icon={Package} active={activeTab === 'specs'} />
+                            <TabButton id="seo" label="SEO & Marketing" icon={Search} active={activeTab === 'seo'} />
+                        </div>
+                    </div>
+
+                    {/* Content Area */}
+                    <div className="flex-1">
+                        <form onSubmit={(e) => e.preventDefault()}>
+                            {activeTab === 'basic' && BasicDetailsTab()}
+                            {activeTab === 'media' && MediaTab()}
+                            {activeTab === 'pricing' && PricingTab()}
+                            {activeTab === 'specs' && SpecsTab()}
+                            {activeTab === 'variants' && VariantsTab()}
+                            {activeTab === 'seo' && SEOTab()}
+                        </form>
+                    </div>
                 </div>
-            </form>
+            </div>
         </div>
     );
 };

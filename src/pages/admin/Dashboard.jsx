@@ -67,7 +67,7 @@ const Dashboard = () => {
                                 </td>
                                 <td className="p-4 font-medium text-stone-800">{product.name}</td>
                                 <td className="p-4 text-stone-600 capitalize">{product.category}</td>
-                                <td className="p-4 text-stone-800 font-bold">Rs. {product.price.toFixed(2)}</td>
+                                <td className="p-4 text-stone-800 font-bold">₹{product.price.toFixed(2)}</td>
                                 <td className="p-4 text-right space-x-2">
                                     <Link to={`/admin/products/edit/${product.id}`}>
                                         <button className="p-2 text-sage-600 hover:bg-sage-100 rounded-full transition-colors">

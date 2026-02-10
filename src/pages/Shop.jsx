@@ -321,10 +321,10 @@ const Shop = () => {
                         loading="lazy"
                         className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
                       />
-                      {product.rating > 0 && (
+                      {product.rating > 0 && product.reviews > 0 && (
                         <div className="absolute top-2 right-2 bg-white/95 backdrop-blur px-1.5 py-0.5 rounded-full flex items-center gap-1 text-[10px] font-bold text-sage-900 shadow-sm">
                           <Star className="h-3 w-3 fill-saffron-400 text-saffron-400" />
-                          {product.rating}
+                          {product.rating.toFixed(1)}
                         </div>
                       )}
 

@@ -61,7 +61,8 @@ const CartDrawer = () => {
                                 </div>
                             ) : (
                                 cartItems.map((item) => (
-                                    <div key={item.id} className="flex gap-4 p-4 bg-sage-50/50 rounded-xl">
+                                    <div key={`${item.id}-${item.variantId || 'default'}`} className="flex gap-4 p-4 bg-sage-50/50 rounded-xl">
+                                        {/* ... item rendering ... */}
                                         <img
                                             src={item.image}
                                             alt={item.name}
@@ -70,12 +71,12 @@ const CartDrawer = () => {
                                         <div className="flex-1 flex flex-col justify-between">
                                             <div>
                                                 <h3 className="font-medium text-sage-900 line-clamp-1">{item.name}</h3>
-                                                <p className="text-sm text-stone-500">Rs. {item.price.toFixed(2)}</p>
+                                                <p className="text-sm text-stone-500">Rs. {(item.price * (1 + (item.gst_rate || 0) / 100)).toFixed(2)}</p>
                                             </div>
                                             <div className="flex items-center justify-between">
                                                 <div className="flex items-center border border-sage-200 rounded-md bg-white">
                                                     <button
-                                                        onClick={() => updateQuantity(item.id, item.quantity - 1)}
+                                                        onClick={() => updateQuantity(item.id, item.variantId, item.quantity - 1)}
                                                         className="p-1 hover:bg-sage-50 text-sage-600"
                                                         disabled={item.quantity <= 1}
                                                     >
@@ -83,14 +84,14 @@ const CartDrawer = () => {
                                                     </button>
                                                     <span className="px-2 text-sm font-medium text-stone-700">{item.quantity}</span>
                                                     <button
-                                                        onClick={() => updateQuantity(item.id, item.quantity + 1)}
+                                                        onClick={() => updateQuantity(item.id, item.variantId, item.quantity + 1)}
                                                         className="p-1 hover:bg-sage-50 text-sage-600"
                                                     >
                                                         <Plus className="h-3 w-3" />
                                                     </button>
                                                 </div>
                                                 <button
-                                                    onClick={() => removeFromCart(item.id)}
+                                                    onClick={() => removeFromCart(item.id, item.variantId)}
                                                     className="text-red-400 hover:text-red-500 p-1"
                                                 >
                                                     <Trash2 className="h-4 w-4" />

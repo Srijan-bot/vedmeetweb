@@ -6,26 +6,68 @@ const StockMovement = () => {
     const [transactions, setTransactions] = useState([]);
     const [loading, setLoading] = useState(true);
 
+    // Filters
+    const [filterType, setFilterType] = useState('');
+    const [dateRange, setDateRange] = useState({ start: '', end: '' });
+    const [showFilters, setShowFilters] = useState(false);
+    const [showDateFilters, setShowDateFilters] = useState(false);
+
     useEffect(() => {
         fetchTransactions();
-    }, []);
+    }, [filterType, dateRange]);
 
     const fetchTransactions = async () => {
         setLoading(true);
         try {
-            const { data, error } = await supabase
+            // 1. Fetch Transactions (removed performed_by join which caused 400 error)
+            let query = supabase
                 .from('inventory_transactions')
                 .select(`
                     *,
                     product_variants (name, sku),
-                    warehouses (name),
-                    performed_by (email)
+                    warehouses (name)
                 `)
-                .order('created_at', { ascending: false })
-                .limit(100);
+                .order('created_at', { ascending: false });
 
-            if (error) throw error;
-            setTransactions(data || []);
+            // Apply Filters
+            if (filterType) {
+                query = query.ilike('transaction_type', `%${filterType}%`);
+            }
+            if (dateRange.start) {
+                query = query.gte('created_at', new Date(dateRange.start).toISOString());
+            }
+            if (dateRange.end) {
+                const endDate = new Date(dateRange.end);
+                endDate.setHours(23, 59, 59, 999);
+                query = query.lte('created_at', endDate.toISOString());
+            }
+
+            const { data: txData, error: txError } = await query.limit(100);
+            if (txError) throw txError;
+
+            // 2. Client-side join for User emails (performed_by)
+            // Fetch unique user IDs
+            const userIds = [...new Set(txData.map(tx => tx.performed_by).filter(Boolean))];
+
+            let userMap = {};
+            if (userIds.length > 0) {
+                const { data: userData } = await supabase
+                    .from('profiles')
+                    .select('id, email, full_name')
+                    .in('id', userIds);
+
+                if (userData) {
+                    userData.forEach(u => { userMap[u.id] = u; });
+                }
+            }
+
+            // Merge data
+            const enrichedData = txData.map(tx => ({
+                ...tx,
+                performer_details: userMap[tx.performed_by] || null
+            }));
+
+            setTransactions(enrichedData || []);
         } catch (error) {
             console.error('Error fetching movements:', error);
         } finally {
@@ -35,22 +77,79 @@ const StockMovement = () => {
 
     return (
         <div className="space-y-8">
-            <div className="flex justify-between items-center">
+            <div className="flex justify-between items-center flex-wrap gap-4">
                 <div className="flex items-center gap-3">
                     <div className="w-2 h-8 bg-purple-500 rounded-sm"></div>
                     <h1 className="text-2xl font-bold text-sage-900">Stock Movement</h1>
                 </div>
-                <div className="flex gap-3">
-                    <button className="flex items-center gap-2 px-4 py-2 bg-white border border-sage-200 rounded-lg text-sage-600 hover:text-sage-900 hover:bg-sage-50 shadow-sm transition-colors">
+                <div className="flex gap-3 items-center">
+                    <button
+                        onClick={() => setShowFilters(!showFilters)}
+                        className={`flex items-center gap-2 px-4 py-2 bg-white border rounded-lg text-sage-600 shadow-sm transition-colors ${showFilters ? 'border-purple-500 ring-1 ring-purple-500 bg-purple-50' : 'border-sage-200 hover:text-sage-900 hover:bg-sage-50'}`}
+                    >
                         <Filter className="w-4 h-4" />
-                        Filter
+                        Type Filter
                     </button>
-                    <button className="flex items-center gap-2 px-4 py-2 bg-white border border-sage-200 rounded-lg text-sage-600 hover:text-sage-900 hover:bg-sage-50 shadow-sm transition-colors">
+                    <button
+                        onClick={() => setShowDateFilters(!showDateFilters)}
+                        className={`flex items-center gap-2 px-4 py-2 bg-white border rounded-lg text-sage-600 shadow-sm transition-colors ${showDateFilters ? 'border-purple-500 ring-1 ring-purple-500 bg-purple-50' : 'border-sage-200 hover:text-sage-900 hover:bg-sage-50'}`}
+                    >
                         <Calendar className="w-4 h-4" />
                         Date Range
                     </button>
                 </div>
             </div>
+
+            {/* Filter Bar */}
+            {(showFilters || showDateFilters) && (
+                <div className="bg-sage-50 border border-sage-200 rounded-lg p-4 flex flex-wrap gap-4 items-center animate-in fade-in slide-in-from-top-2">
+                    {showFilters && (
+                        <div className="flex items-center gap-2">
+                            <span className="text-xs font-semibold text-sage-500 uppercase tracking-wide">Type:</span>
+                            <select
+                                value={filterType}
+                                onChange={(e) => setFilterType(e.target.value)}
+                                className="px-3 py-1.5 bg-white border border-sage-200 rounded text-sage-700 text-sm focus:outline-none focus:border-purple-400"
+                            >
+                                <option value="">All Types</option>
+                                <option value="purchase">Purchase (In)</option>
+                                <option value="sale">Sale (Out)</option>
+                                <option value="transfer">Transfer</option>
+                                <option value="adjustment">Adjustment</option>
+                                <option value="return">Return</option>
+                            </select>
+                        </div>
+                    )}
+
+                    {showDateFilters && (
+                        <div className="flex items-center gap-2">
+                            <span className="text-xs font-semibold text-sage-500 uppercase tracking-wide">Date:</span>
+                            <input
+                                type="date"
+                                value={dateRange.start}
+                                onChange={(e) => setDateRange(prev => ({ ...prev, start: e.target.value }))}
+                                className="px-3 py-1.5 bg-white border border-sage-200 rounded text-sage-700 text-sm focus:outline-none focus:border-purple-400"
+                                placeholder="Start"
+                            />
+                            <span className="text-sage-400">-</span>
+                            <input
+                                type="date"
+                                value={dateRange.end}
+                                onChange={(e) => setDateRange(prev => ({ ...prev, end: e.target.value }))}
+                                className="px-3 py-1.5 bg-white border border-sage-200 rounded text-sage-700 text-sm focus:outline-none focus:border-purple-400"
+                                placeholder="End"
+                            />
+                        </div>
+                    )}
+
+                    <button
+                        onClick={() => { setFilterType(''); setDateRange({ start: '', end: '' }); }}
+                        className="text-xs text-red-500 hover:text-red-700 underline"
+                    >
+                        Clear All
+                    </button>
+                </div>
+            )}
 
             <div className="bg-white rounded-xl border border-sage-200 overflow-hidden shadow-sm">
                 <table className="w-full text-left border-collapse">
@@ -103,13 +202,13 @@ const StockMovement = () => {
                                 <td className="px-6 py-4">
                                     <div className="flex items-center gap-2 text-xs text-stone-500">
                                         <User className="w-3 h-3" />
-                                        {tx.performed_by?.email?.split('@')[0] || 'System'}
+                                        {tx.performer_details?.email?.split('@')[0] || tx.performer_details?.full_name || 'System'}
                                     </div>
                                 </td>
                             </tr>
                         ))}
                         {transactions.length === 0 && !loading && (
-                            <tr><td colSpan="7" className="p-8 text-center text-stone-500">No transactions found.</td></tr>
+                            <tr><td colSpan="7" className="p-8 text-center text-stone-500">No transactions found matching criteria.</td></tr>
                         )}
                     </tbody>
                 </table>

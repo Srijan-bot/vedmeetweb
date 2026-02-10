@@ -30,7 +30,15 @@ const PrescriptionDetails = () => {
 
     const handleAddAllToCart = () => {
         details.items.forEach(item => {
-            addToCart(item.product);
+            const productToAdd = item.variant
+                ? {
+                    ...item.product,
+                    price: item.variant.price,
+                    variantId: item.variant.id,
+                    name: `${item.product.name} (${item.variant.name || item.variant.volume || item.variant.weight})`
+                }
+                : item.product;
+            addToCart(productToAdd, item.quantity || 1);
         });
         alert("All items added to cart!");
     };
@@ -155,7 +163,14 @@ const PrescriptionDetails = () => {
                                         )}
                                         <div className="flex-1">
                                             <div className="flex justify-between items-start">
-                                                <h4 className="font-bold text-sage-900">{item.product?.name}</h4>
+                                                <div>
+                                                    <h4 className="font-bold text-sage-900">{item.product?.name}</h4>
+                                                    {item.variant && (
+                                                        <p className="text-xs text-sage-600 font-medium">
+                                                            {item.variant.name || item.variant.volume || item.variant.weight}
+                                                        </p>
+                                                    )}
+                                                </div>
                                                 {item.is_alternative && (
                                                     <span className="text-[10px] bg-blue-50 text-blue-600 px-2 py-0.5 rounded border border-blue-100">Alternative</span>
                                                 )}
@@ -170,9 +185,28 @@ const PrescriptionDetails = () => {
                                             )}
 
                                             <div className="flex justify-between items-center mt-3">
-                                                <span className="font-bold text-saffron-600">₹{item.product?.price}</span>
+                                                <div className="flex items-center gap-2">
+                                                    <span className="font-bold text-saffron-600">
+                                                        ₹{item.variant ? item.variant.price : item.product?.price}
+                                                    </span>
+                                                    {(item.quantity > 1) && (
+                                                        <span className="text-xs text-stone-500 bg-stone-100 px-2 py-0.5 rounded-full">
+                                                            Qty: {item.quantity}
+                                                        </span>
+                                                    )}
+                                                </div>
                                                 <button
-                                                    onClick={() => addToCart(item.product)}
+                                                    onClick={() => {
+                                                        const productToAdd = item.variant
+                                                            ? {
+                                                                ...item.product,
+                                                                price: item.variant.price,
+                                                                variantId: item.variant.id,
+                                                                name: `${item.product.name} (${item.variant.name || item.variant.volume || item.variant.weight})`
+                                                            }
+                                                            : item.product;
+                                                        addToCart(productToAdd, item.quantity || 1);
+                                                    }}
                                                     className="text-sm font-medium text-saffron-600 hover:text-saffron-700 flex items-center gap-1"
                                                 >
                                                     <ShoppingBag className="w-4 h-4" /> Add

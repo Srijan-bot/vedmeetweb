@@ -1,11 +1,12 @@
 import React, { useState } from 'react';
 import { Link, NavLink, useNavigate } from 'react-router-dom';
-import { ShoppingBag, Menu, X, Search, User, FileText } from 'lucide-react';
+import { ShoppingBag, Menu, X, Search, User, FileText, ArrowLeft, History } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import Button from './Button';
 import { cn } from '../lib/utils';
 import { useCart } from '../context/CartContext';
 import { useAuth } from '../context/AuthContext';
+import { getCategories, searchProducts, getTrendingProducts } from '../lib/data';
 import PrescriptionUpload from './PrescriptionUpload';
 
 import logoFull from '../assets/logo-full.svg';
@@ -18,6 +19,38 @@ const Navbar = () => {
     const { cartCount, toggleCart } = useCart();
     const { user, profile, loading, signOut } = useAuth();
     const navigate = useNavigate();
+    const [categories, setCategories] = useState([]);
+
+    const [searchResults, setSearchResults] = useState([]);
+    const [trendingProducts, setTrendingProducts] = useState([]);
+    const [isSearching, setIsSearching] = useState(false);
+
+    React.useEffect(() => {
+        const loadData = async () => {
+            const cats = await getCategories();
+            setCategories(cats || []);
+
+            const trending = await getTrendingProducts(6);
+            setTrendingProducts(trending || []);
+        };
+        loadData();
+    }, []);
+
+    // Real-time search effect
+    React.useEffect(() => {
+        const timber = setTimeout(async () => {
+            if (searchQuery.length >= 2) {
+                setIsSearching(true);
+                const results = await searchProducts(searchQuery);
+                setSearchResults(results);
+                setIsSearching(false);
+            } else {
+                setSearchResults([]);
+            }
+        }, 300); // 300ms debounce
+
+        return () => clearTimeout(timber);
+    }, [searchQuery]);
 
     const handleSearch = (e) => {
         e.preventDefault();
@@ -56,10 +89,15 @@ const Navbar = () => {
                                 Shop
                             </Link>
                             <div className="invisible group-hover:visible absolute top-full left-0 w-48 bg-cream border border-sage-100 shadow-lg rounded-md py-2 overflow-hidden z-50 transition-all opacity-0 group-hover:opacity-100 transform translate-y-2 group-hover:translate-y-0">
-                                <Link to="/shop?category=single-herbs" className="block px-4 py-2 text-sm text-stone-600 hover:bg-sage-50 hover:text-sage-700">Single Herbs</Link>
-                                <Link to="/shop?category=wellness-kits" className="block px-4 py-2 text-sm text-stone-600 hover:bg-sage-50 hover:text-sage-700">Wellness Kits</Link>
-                                <Link to="/shop?category=skincare" className="block px-4 py-2 text-sm text-stone-600 hover:bg-sage-50 hover:text-sage-700">Skincare</Link>
-                                <Link to="/shop?category=haircare" className="block px-4 py-2 text-sm text-stone-600 hover:bg-sage-50 hover:text-sage-700">Haircare</Link>
+                                {categories.length > 0 ? (
+                                    categories.map(cat => (
+                                        <Link key={cat.id} to={`/shop?category=${cat.id}`} className="block px-4 py-2 text-sm text-stone-600 hover:bg-sage-50 hover:text-sage-700">
+                                            {cat.name}
+                                        </Link>
+                                    ))
+                                ) : (
+                                    <span className="block px-4 py-2 text-sm text-stone-400">Loading...</span>
+                                )}
                             </div>
                         </div>
 
@@ -91,31 +129,112 @@ const Navbar = () => {
                             <FileText className="h-5 w-5" />
                         </Button>
 
-                        <div className="relative">
+                        {/* Search - Desktop Expanding */}
+                        <div className="hidden md:flex relative items-center group">
                             <AnimatePresence>
                                 {searchOpen && (
-                                    <motion.form
-                                        initial={{ width: 0, opacity: 0 }}
-                                        animate={{ width: 200, opacity: 1 }}
-                                        exit={{ width: 0, opacity: 0 }}
-                                        onSubmit={handleSearch}
-                                        className="absolute right-10 top-1/2 -translate-y-1/2 overflow-hidden z-50"
-                                    >
-                                        <input
-                                            type="text"
-                                            value={searchQuery}
-                                            onChange={(e) => setSearchQuery(e.target.value)}
-                                            placeholder="Search..."
-                                            className="w-full px-3 py-1 text-sm border border-sage-200 rounded-full focus:outline-none focus:border-sage-400 bg-white shadow-sm"
-                                            autoFocus
-                                        />
-                                    </motion.form>
+                                    <>
+                                        <motion.form
+                                            initial={{ width: 0, opacity: 0 }}
+                                            animate={{ width: 300, opacity: 1 }}
+                                            exit={{ width: 0, opacity: 0 }}
+                                            onSubmit={handleSearch}
+                                            className="absolute right-10 top-1/2 -translate-y-1/2 overflow-visible z-20"
+                                        >
+                                            <input
+                                                type="text"
+                                                value={searchQuery}
+                                                onChange={(e) => setSearchQuery(e.target.value)}
+                                                placeholder="Search products..."
+                                                className="w-full px-4 py-2 text-sm border border-sage-200 rounded-full focus:outline-none focus:border-saffron-400 bg-white shadow-sm pr-8"
+                                                autoFocus
+                                            />
+
+                                            {/* Desktop Search Dropdown */}
+                                            {searchOpen && (
+                                                <div className="absolute top-12 right-0 w-full min-w-[300px] bg-white rounded-xl shadow-xl border border-sage-100 overflow-hidden py-2 z-50" onClick={(e) => e.stopPropagation()}>
+                                                    {console.log('Search Render:', { searchQuery, res: searchResults.length, trend: trendingProducts.length })}
+                                                    {searchQuery.length < 2 ? (
+                                                        <div className="p-4">
+                                                            <h4 className="text-xs font-bold text-stone-400 uppercase tracking-wider mb-3">Trending Now</h4>
+                                                            <div className="grid grid-cols-1 gap-3">
+                                                                {trendingProducts.map(prod => (
+                                                                    <Link
+                                                                        key={prod.id}
+                                                                        to={`/product/${prod.id}`}
+                                                                        onClick={() => setSearchOpen(false)}
+                                                                        className="flex items-center gap-3 hover:bg-sage-50 p-2 rounded-lg transition-colors group/item"
+                                                                    >
+                                                                        <div className="w-10 h-10 rounded-md overflow-hidden bg-gray-100 flex-shrink-0">
+                                                                            <img src={prod.image} alt="" className="w-full h-full object-cover" />
+                                                                        </div>
+                                                                        <div className="flex-1 min-w-0">
+                                                                            <p className="text-sm font-medium text-sage-900 group-hover/item:text-saffron-600 truncate">{prod.name}</p>
+                                                                            <p className="text-xs text-stone-500 truncate">{prod.brand}</p>
+                                                                        </div>
+                                                                    </Link>
+                                                                ))}
+                                                            </div>
+                                                        </div>
+                                                    ) : (
+                                                        <div className="max-h-[60vh] overflow-y-auto">
+                                                            {isSearching ? (
+                                                                <div className="p-4 text-center text-sm text-stone-500">Searching...</div>
+                                                            ) : searchResults.length > 0 ? (
+                                                                searchResults.map(prod => (
+                                                                    <Link
+                                                                        key={prod.id}
+                                                                        to={`/product/${prod.id}`}
+                                                                        onClick={() => {
+                                                                            setSearchQuery('');
+                                                                            setSearchOpen(false);
+                                                                        }}
+                                                                        className="flex items-center gap-4 px-4 py-3 hover:bg-sage-50 transition-colors border-b border-gray-50 last:border-0 group/item"
+                                                                    >
+                                                                        <div className="w-12 h-12 rounded-lg overflow-hidden bg-gray-100 flex-shrink-0 border border-gray-100">
+                                                                            <img src={prod.image} alt="" className="w-full h-full object-cover" />
+                                                                        </div>
+                                                                        <div className="flex-1 min-w-0">
+                                                                            <p className="text-sm font-medium text-sage-900 group-hover/item:text-saffron-600 truncate">{prod.name}</p>
+                                                                            <div className="flex justify-between items-center mt-0.5">
+                                                                                <p className="text-xs text-stone-500 truncate">{prod.category && prod.category[0]}</p>
+                                                                                <span className="text-xs font-bold text-sage-800">₹{Math.round(prod.disc_price || prod.price)}</span>
+                                                                            </div>
+                                                                        </div>
+                                                                    </Link>
+                                                                ))
+                                                            ) : (
+                                                                <div className="p-8 text-center">
+                                                                    <p className="text-sm text-stone-500">No products found for "{searchQuery}"</p>
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            )}
+                                        </motion.form>
+                                    </>
                                 )}
                             </AnimatePresence>
-                            <Button variant="ghost" size="icon" onClick={() => setSearchOpen(!searchOpen)}>
+                            <Button
+                                variant="ghost"
+                                size="icon"
+                                onClick={() => setSearchOpen(!searchOpen)}
+                                className={cn(searchOpen ? "bg-sage-50 text-sage-900" : "")}
+                            >
                                 <Search className="h-5 w-5" />
                             </Button>
                         </div>
+
+                        {/* Search - Mobile Trigger */}
+                        <Button
+                            variant="ghost"
+                            size="icon"
+                            className="md:hidden"
+                            onClick={() => setSearchOpen(true)}
+                        >
+                            <Search className="h-5 w-5" />
+                        </Button>
                         <Button variant="ghost" size="icon" className="relative" onClick={toggleCart}>
                             <ShoppingBag className="h-5 w-5" />
                             {cartCount > 0 && (
@@ -205,6 +324,137 @@ const Navbar = () => {
                                     )}
                                 </div>
                             </div>
+                        </div>
+                    </motion.div>
+                )}
+            </AnimatePresence>
+
+            {/* Mobile Search Overlay */}
+            <AnimatePresence>
+                {searchOpen && (
+                    <motion.div
+                        initial={{ opacity: 0, y: 100 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: 100 }}
+                        transition={{ type: "spring", stiffness: 300, damping: 30 }}
+                        className="fixed inset-0 z-[9999] md:hidden flex flex-col bg-white"
+                        style={{ backgroundColor: '#ffffff', height: '100vh', width: '100vw' }}
+                    >
+                        <div className="flex items-center gap-3 p-4 border-b border-sage-100 bg-white">
+                            <button onClick={() => setSearchOpen(false)} className="text-stone-500 p-1">
+                                <ArrowLeft className="w-6 h-6" />
+                            </button>
+                            <form onSubmit={handleSearch} className="flex-1 relative">
+                                <input
+                                    type="text"
+                                    value={searchQuery}
+                                    onChange={(e) => setSearchQuery(e.target.value)}
+                                    placeholder="Search for products, brands..."
+                                    className="w-full bg-sage-50 text-sage-900 px-4 py-2.5 rounded-lg focus:outline-none focus:ring-2 focus:ring-sage-200 placeholder:text-sage-300 text-sm font-medium"
+                                    autoFocus
+                                />
+                                <button type="submit" className="absolute right-3 top-1/2 -translate-y-1/2 text-saffron-600">
+                                    <Search className="w-4 h-4" />
+                                </button>
+                            </form>
+                        </div>
+
+                        <div className="flex-1 overflow-y-auto p-4 bg-white">
+                            {/* Suggestions or Recent */}
+                            {searchQuery.length < 2 ? (
+                                <>
+                                    <div className="mb-6">
+                                        <h4 className="text-xs font-bold text-stone-400 uppercase tracking-wider mb-3 px-1">Trending Products</h4>
+                                        <div className="grid grid-cols-2 gap-3">
+                                            {trendingProducts.map(prod => (
+                                                <Link
+                                                    key={prod.id}
+                                                    to={`/product/${prod.id}`}
+                                                    onClick={() => setSearchOpen(false)}
+                                                    className="bg-white p-2 rounded-lg border border-sage-100 shadow-sm flex flex-col gap-2"
+                                                >
+                                                    <div className="bg-gray-100 aspect-square rounded-md overflow-hidden">
+                                                        <img src={prod.image} className="w-full h-full object-cover" alt="" />
+                                                    </div>
+                                                    <p className="text-xs font-bold text-sage-900 line-clamp-2">{prod.name}</p>
+                                                    <p className="text-xs text-saffron-600 font-bold">₹{Math.round(prod.disc_price || prod.price)}</p>
+                                                </Link>
+                                            ))}
+                                        </div>
+                                    </div>
+
+                                    <div className="mb-6">
+                                        <h4 className="text-xs font-bold text-stone-400 uppercase tracking-wider mb-3 px-1">Popular Keywords</h4>
+                                        <div className="flex flex-wrap gap-2">
+                                            {['Ashwagandha', 'Hair Oil', 'Chyawanprash', 'Triphala', 'Face Serum'].map(tag => (
+                                                <button
+                                                    key={tag}
+                                                    onClick={() => {
+                                                        setSearchQuery(tag);
+                                                        // navigate(`/shop?search=${encodeURIComponent(tag)}`); 
+                                                    }}
+                                                    className="px-3 py-1.5 bg-white border border-sage-100 rounded-full text-sm text-sage-700 hover:border-saffron-300 hover:text-saffron-700 transition-colors shadow-sm"
+                                                >
+                                                    <span className="flex items-center gap-1"><Search className="w-3 h-3 text-stone-300" /> {tag}</span>
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
+
+                                    <div className="mb-6">
+                                        <h4 className="text-xs font-bold text-stone-400 uppercase tracking-wider mb-3 px-1">Popular Categories</h4>
+                                        <div className="space-y-1">
+                                            {categories.slice(0, 5).map(cat => (
+                                                <Link
+                                                    key={cat.id}
+                                                    to={`/shop?category=${cat.id}`}
+                                                    onClick={() => setSearchOpen(false)}
+                                                    className="flex items-center justify-between p-3 bg-white rounded-lg border border-transparent hover:border-sage-100 active:bg-sage-50"
+                                                >
+                                                    <span className="text-sm font-medium text-sage-800">{cat.name}</span>
+                                                    <ArrowLeft className="w-4 h-4 text-stone-300 rotate-180" />
+                                                </Link>
+                                            ))}
+                                        </div>
+                                    </div>
+                                </>
+                            ) : (
+                                <div className="space-y-1">
+                                    <h4 className="text-xs font-bold text-stone-400 uppercase tracking-wider mb-3 px-1">Search Results</h4>
+                                    {isSearching ? (
+                                        <div className="flex justify-center py-8">
+                                            <div className="w-6 h-6 border-2 border-sage-200 border-t-saffron-500 rounded-full animate-spin" />
+                                        </div>
+                                    ) : searchResults.length > 0 ? (
+                                        searchResults.map(prod => (
+                                            <Link
+                                                key={prod.id}
+                                                to={`/product/${prod.id}`}
+                                                onClick={() => {
+                                                    setSearchQuery('');
+                                                    setSearchOpen(false);
+                                                }}
+                                                className="flex items-center gap-4 p-3 bg-white rounded-xl border border-sage-100 shadow-sm mb-2"
+                                            >
+                                                <div className="w-14 h-14 rounded-lg overflow-hidden bg-gray-100 flex-shrink-0">
+                                                    <img src={prod.image} alt="" className="w-full h-full object-cover" />
+                                                </div>
+                                                <div className="flex-1 min-w-0">
+                                                    <p className="text-sm font-bold text-sage-900 line-clamp-2">{prod.name}</p>
+                                                    <div className="flex justify-between items-center mt-1">
+                                                        <span className="text-xs text-stone-500">{prod.brand}</span>
+                                                        <span className="text-sm font-bold text-saffron-600">₹{Math.round(prod.disc_price || prod.price)}</span>
+                                                    </div>
+                                                </div>
+                                            </Link>
+                                        ))
+                                    ) : (
+                                        <div className="text-center py-10 text-stone-500">
+                                            No products found matching "{searchQuery}"
+                                        </div>
+                                    )}
+                                </div>
+                            )}
                         </div>
                     </motion.div>
                 )}
