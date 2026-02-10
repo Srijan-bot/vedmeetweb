@@ -4,7 +4,7 @@ import { ArrowRight, Star, Truck, ShieldCheck, Leaf, Heart, ArrowUpRight } from 
 import { Link } from 'react-router-dom';
 import Button from '../components/Button';
 import { getProducts, getSiteSettings, getCategories, getBlogs, getBrands } from '../lib/data';
-import { FileText, Stethoscope, ClipboardList, Activity } from 'lucide-react';
+import { FileText, Stethoscope } from 'lucide-react';
 import LeadModal from '../components/LeadModal';
 import { useCart } from '../context/CartContext';
 import heroImg from '../assets/hero.png';
@@ -165,9 +165,7 @@ const Home = () => {
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-4 md:gap-8">
                         {[
                             { icon: FileText, title: "Upload Prescription", desc: "Get medicines delivered", link: "/prescriptions", color: "bg-blue-50 text-blue-600" },
-                            { icon: Stethoscope, title: "Consult Doctor", desc: "Expert ayurvedic advice", link: "/book-appointment", color: "bg-green-50 text-green-600" },
-                            { icon: ClipboardList, title: "Book Lab Test", desc: "Home sample collection", link: "/lab-tests", color: "bg-purple-50 text-purple-600" },
-                            { icon: Activity, title: "Health Plans", desc: "Personalized wellness", link: "/plans", color: "bg-orange-50 text-orange-600" }
+                            { icon: Stethoscope, title: "Consult Doctor", desc: "Expert ayurvedic advice", link: "/book-appointment", color: "bg-green-50 text-green-600" }
                         ].map((service, index) => (
                             <Link key={index} to={service.link} className="bg-stone-50 rounded-2xl p-6 hover:bg-white hover:shadow-xl transition-all duration-300 border border-transparent hover:border-stone-100 group text-center md:text-left flex flex-col items-center md:items-start">
                                 <div className={`w-12 h-12 rounded-xl ${service.color} flex items-center justify-center mb-4 group-hover:scale-110 transition-transform duration-300`}>
