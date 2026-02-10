@@ -69,7 +69,11 @@ const ProductManager = () => {
     const totalPages = Math.ceil(sortedProducts.length / itemsPerPage);
 
     // Ensure currentPage is valid
-    if (currentPage > totalPages && totalPages > 0) setCurrentPage(1);
+    useEffect(() => {
+        if (currentPage > totalPages && totalPages > 0) {
+            setCurrentPage(1);
+        }
+    }, [totalPages, currentPage]);
 
     const startIndex = (currentPage - 1) * itemsPerPage;
     const currentProducts = sortedProducts.slice(startIndex, startIndex + itemsPerPage);
