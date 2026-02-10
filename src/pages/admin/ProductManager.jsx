@@ -153,11 +153,17 @@ const ProductManager = () => {
                                         <tr className="bg-sage-50/80 hover:bg-sage-100 transition-colors border-l-4 border-l-sage-400">
                                             <td className="p-4">
                                                 <div className="flex items-center gap-3">
-                                                    <img
-                                                        src={product.image || 'https://via.placeholder.com/40'}
-                                                        alt={product.name}
-                                                        className="w-10 h-10 object-cover rounded-md bg-gray-200"
-                                                    />
+                                                    {product.image ? (
+                                                        <img
+                                                            src={product.image}
+                                                            alt={product.name}
+                                                            className="w-10 h-10 object-cover rounded-md bg-gray-200"
+                                                        />
+                                                    ) : (
+                                                        <div className="w-10 h-10 rounded-md bg-sage-200 flex items-center justify-center text-sage-600 font-bold text-xs">
+                                                            {product.name?.charAt(0)}
+                                                        </div>
+                                                    )}
                                                     <div>
                                                         <div className="font-bold text-sage-900 text-base">{product.name}</div>
                                                         <div className="text-xs text-sage-500">{variants.length} Variants</div>

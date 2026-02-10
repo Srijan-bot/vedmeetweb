@@ -2,7 +2,7 @@
 
 ## Database & Performance
 1.  **Indexes**:
-    -   `advisving_sessions(created_by)`: Speeds up "My Created Sessions" queries for admins.
+    -   `advising_sessions(created_by)`: Speeds up "My Created Sessions" queries for admins.
     -   `session_user_tags(user_id)`: Critical for RLS checks ("Users can view sessions they are tagged in").
     -   `session_messages(session_id, created_at)`: Optimizes loading chat history in chronological order.
     

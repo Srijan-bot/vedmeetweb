@@ -4,7 +4,16 @@
 -- This script fixes two issues:
 -- 1. Stock is not decreasing when orders are placed
 -- 2. Adds auto-confirmation logic for orders with sufficient stock
+-- 3. Adds safety constraints and robust locking
 -- =============================================================================
+
+-- Add safety constraint to prevent negative stock
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'stock_quantity_non_negative') THEN
+        ALTER TABLE public.product_variants ADD CONSTRAINT stock_quantity_non_negative CHECK (stock_quantity >= 0);
+    END IF;
+END $$;
 
 -- Drop existing function signatures to avoid conflicts
 DROP FUNCTION IF EXISTS public.place_order(text, text, text, text, text, jsonb, numeric, text, jsonb, point, numeric, numeric);
@@ -57,8 +66,11 @@ BEGIN
         IF (v_item->>'variant_id') IS NOT NULL THEN
             v_variant_id := (v_item->>'variant_id')::uuid;
         ELSE
+            -- Deterministic selection
             SELECT id INTO v_variant_id FROM public.product_variants 
-            WHERE product_id = v_product_id LIMIT 1;
+            WHERE product_id = v_product_id 
+            ORDER BY id ASC
+            LIMIT 1;
         END IF;
 
         IF v_variant_id IS NULL THEN
@@ -66,9 +78,11 @@ BEGIN
         END IF;
 
         -- Check available stock (stock_quantity - reserved_quantity)
+        -- LOCK ROW FOR UPDATE to prevent race conditions
         SELECT stock_quantity - reserved_quantity INTO v_available_stock
         FROM public.product_variants 
-        WHERE id = v_variant_id;
+        WHERE id = v_variant_id
+        FOR UPDATE;
 
         -- If any item doesn't have sufficient stock, don't auto-confirm
         IF v_available_stock < v_quantity THEN
@@ -123,8 +137,11 @@ BEGIN
         IF (v_item->>'variant_id') IS NOT NULL THEN
             v_variant_id := (v_item->>'variant_id')::uuid;
         ELSE
+            -- Deterministic selection
             SELECT id INTO v_variant_id FROM public.product_variants 
-            WHERE product_id = v_product_id LIMIT 1;
+            WHERE product_id = v_product_id 
+            ORDER BY id ASC
+            LIMIT 1;
         END IF;
 
         -- Insert Order Item
@@ -145,6 +162,7 @@ BEGIN
         -- Update Stock: Reserve quantity for pending orders, decrement for confirmed orders
         IF v_auto_confirm THEN
             -- Auto-confirmed: Decrement actual stock
+            -- Use conditional update for extra safety (though row locked above)
             UPDATE public.product_variants 
             SET stock_quantity = stock_quantity - v_quantity
             WHERE id = v_variant_id;

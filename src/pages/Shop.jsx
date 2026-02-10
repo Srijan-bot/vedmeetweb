@@ -27,9 +27,8 @@ const Shop = () => {
   useEffect(() => {
     const loadData = async () => {
       setLoading(true);
-      const [prodData, catData, conData] = await Promise.all([
+      const [prodData, catData, conData, brandData] = await Promise.all([
         getProducts(),
-        getCategories(),
         getCategories(),
         getConcerns(),
         getBrands()
