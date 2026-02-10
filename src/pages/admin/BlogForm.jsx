@@ -50,6 +50,9 @@ const BlogForm = () => {
 
     const handleChange = (e) => {
         const { name, value } = e.target;
+        if (name === 'excerpt' && value.length > 300) {
+            return; // Enforce limit
+        }
         setFormData(prev => ({ ...prev, [name]: value }));
     };
 
@@ -126,7 +129,7 @@ const BlogForm = () => {
                         Discard
                     </Button>
                     <Button
-                        onClick={handleSubmit}
+                        type="submit"
                         disabled={loading}
                         className="bg-sage-900 text-white hover:bg-sage-800 flex items-center gap-2"
                     >
@@ -204,6 +207,7 @@ const BlogForm = () => {
                             onChange={handleChange}
                             rows="3"
                             placeholder="A brief summary for previews..."
+                            maxLength={300}
                             className="w-full px-3 py-2 border border-stone-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-sage-500 text-sm"
                         />
                         <p className="text-xs text-stone-400 mt-1 text-right">{formData.excerpt.length}/300 characters</p>
