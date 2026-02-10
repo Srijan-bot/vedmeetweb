@@ -62,6 +62,7 @@ const OrderDetails = () => {
     const [invoiceNum, setInvoiceNum] = useState(null);
     const [showTrackingModal, setShowTrackingModal] = useState(false);
     const [trackingCode, setTrackingCode] = useState('');
+    const [shippingError, setShippingError] = useState(null);
 
 
 
@@ -190,7 +191,26 @@ const OrderDetails = () => {
 
     // Calculate Shipping Cost when dependencies change
     useEffect(() => {
-        if (!order || items.length === 0 || !distance || shippingRates.length === 0) return;
+        if (!order) return;
+
+        setShippingError(null);
+
+        if (items.length === 0) {
+            setShippingError("No items in order to calculate shipping.");
+            return;
+        }
+
+        if (shippingRates.length === 0) {
+            setShippingError("Shipping rates not configured in settings.");
+            console.warn("Shipping Logic: Rates missing.");
+            return;
+        }
+
+        if (distance === null) {
+            setShippingError("Distance unavailable. Check order coordinates or warehouse location.");
+            console.warn("Shipping Logic: Distance is null. Order:", order.coordinates);
+            return;
+        }
 
         // Prepare order details for calculator
         // Calculator expects: { items: [ { product: { weight, dimensions }, quantity } ] }
@@ -203,14 +223,18 @@ const OrderDetails = () => {
             }))
         };
 
-        const result = calculateShippingCost(
-            orderForCalc,
-            shippingRates,
-            packagingBoxes,
-            distance
-        );
-
-        setShippingCost(result);
+        try {
+            const result = calculateShippingCost(
+                orderForCalc,
+                shippingRates,
+                packagingBoxes,
+                distance
+            );
+            setShippingCost(result);
+        } catch (err) {
+            console.error("Calculation Error:", err);
+            setShippingError("Error calculating shipping cost: " + err.message);
+        }
 
     }, [order, items, distance, shippingRates, packagingBoxes]);
 
@@ -616,9 +640,53 @@ const OrderDetails = () => {
                             </div>
                         </div>
                     ) : (
-                        <div className="flex flex-col items-center justify-center h-40 text-stone-400 bg-stone-50 rounded-xl border border-dashed border-stone-200">
-                            <Package className="w-8 h-8 mb-2 opacity-50" />
-                            <p className="text-sm">Shipping calculation pending...</p>
+                        <div className="flex flex-col items-center justify-center min-h-[160px] p-6 text-stone-400 bg-stone-50 rounded-xl border border-dashed border-stone-200">
+                            {shippingError ? (
+                                <div className="text-center w-full max-w-md">
+                                    <AlertCircle className="w-8 h-8 mb-2 text-amber-500 mx-auto" />
+                                    <p className="text-sm font-medium text-amber-700 mb-1">{shippingError}</p>
+                                    <p className="text-xs text-stone-500 mb-4">
+                                        Automatic calculation failed. You can manually override the parameters below.
+                                    </p>
+
+                                    <div className="bg-white p-4 rounded-lg border border-stone-200 shadow-sm text-left">
+                                        <h5 className="font-bold text-stone-800 text-xs uppercase mb-3">Manual Override</h5>
+                                        <div className="flex flex-col gap-3">
+                                            <div className="flex items-center justify-between gap-4">
+                                                <span className="text-sm text-stone-600">Force Local Delivery?</span>
+                                                <button
+                                                    onClick={() => setDistance(5)}
+                                                    className="px-3 py-1 bg-teal-50 text-teal-700 text-xs font-bold rounded border border-teal-100 hover:bg-teal-100"
+                                                >
+                                                    Set Local (5km)
+                                                </button>
+                                            </div>
+                                            <div className="flex items-center justify-between gap-4">
+                                                <span className="text-sm text-stone-600">Set Manual Distance</span>
+                                                <div className="flex items-center gap-2">
+                                                    <input
+                                                        type="number"
+                                                        className="w-20 px-2 py-1 text-sm border border-stone-300 rounded"
+                                                        placeholder="km"
+                                                        onKeyDown={(e) => {
+                                                            if (e.key === 'Enter') {
+                                                                const val = parseFloat(e.target.value);
+                                                                if (val > 0) setDistance(val);
+                                                            }
+                                                        }}
+                                                    />
+                                                    <button className="text-xs bg-stone-100 hover:bg-stone-200 px-2 py-1 rounded">Set</button>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            ) : (
+                                <>
+                                    <Package className="w-8 h-8 mb-2 opacity-50 animate-pulse" />
+                                    <p className="text-sm">Calculating shipping details...</p>
+                                </>
+                            )}
                         </div>
                     )}
                 </div>
