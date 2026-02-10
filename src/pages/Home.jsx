@@ -162,7 +162,7 @@ const Home = () => {
                         <h2 className="text-3xl md:text-4xl font-serif font-bold text-sage-900 mt-2">Our Services</h2>
                     </div>
 
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4 md:gap-8">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6 md:gap-8 max-w-5xl mx-auto">
                         {[
                             { icon: FileText, title: "Upload Prescription", desc: "Get medicines delivered", link: "/prescriptions", color: "bg-blue-50 text-blue-600" },
                             { icon: Stethoscope, title: "Consult Doctor", desc: "Expert ayurvedic advice", link: "/book-appointment", color: "bg-green-50 text-green-600" }
