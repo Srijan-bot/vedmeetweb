@@ -14,7 +14,7 @@ import LocationPicker from '../components/LocationPicker';
 const UserProfile = () => {
     const { user, profile, loading: authLoading, signOut } = useAuth();
     const navigate = useNavigate();
-    const [activeTab, setActiveTab] = useState('profile');
+    const [activeTab, setActiveTab] = useState('orders');
 
     useEffect(() => {
         if (!authLoading && !user) navigate('/login');
@@ -23,47 +23,53 @@ const UserProfile = () => {
     if (authLoading) return <div className="min-h-screen pt-20 text-center">Loading...</div>;
 
     const tabs = [
-        { id: 'profile', label: 'My Profile', icon: User },
-        { id: 'addresses', label: 'Saved Addresses', icon: MapPin },
         { id: 'orders', label: 'Order History', icon: Package },
-        { id: 'appointments', label: 'Appointments', icon: Calendar },
         { id: 'prescriptions', label: 'Prescriptions', icon: FileText },
+        { id: 'appointments', label: 'Appointments', icon: Calendar },
+        { id: 'addresses', label: 'Saved Addresses', icon: MapPin },
+        { id: 'profile', label: 'Profile Settings', icon: User },
     ];
 
     return (
         <div className="min-h-screen bg-[#FAFAF9] pt-8 pb-20">
             <div className="container mx-auto px-4 md:px-6">
                 <div className="flex flex-col md:flex-row gap-8">
-                    {/* Sidebar */}
-                    <div className="w-full md:w-64 flex-shrink-0 space-y-2">
-                        <div className="bg-white p-6 rounded-2xl shadow-sm border border-sage-100 mb-6 text-center">
-                            <div className="w-20 h-20 bg-sage-100 rounded-full mx-auto flex items-center justify-center text-sage-600 text-2xl font-bold mb-3 border border-sage-200">
+                    {/* Sidebar / Tabs Navigation */}
+                    <div className="w-full md:w-64 flex-shrink-0 space-y-4 md:space-y-2">
+                        {/* User Info Card */}
+                        <div className="bg-white p-4 md:p-6 rounded-2xl shadow-sm border border-sage-100 text-center flex items-center md:block gap-4">
+                            <div className="w-16 h-16 md:w-20 md:h-20 bg-sage-100 rounded-full flex-shrink-0 flex items-center justify-center text-sage-600 text-xl md:text-2xl font-bold border border-sage-200 mx-auto md:mx-auto">
                                 {profile?.full_name?.[0] || user?.email?.[0]?.toUpperCase()}
                             </div>
-                            <h2 className="font-serif font-bold text-sage-900 truncate">{profile?.full_name || 'User'}</h2>
-                            <p className="text-xs text-stone-500 truncate">{user?.email}</p>
+                            <div className="text-left md:text-center overflow-hidden">
+                                <h2 className="font-serif font-bold text-sage-900 truncate text-lg">{profile?.full_name || 'User'}</h2>
+                                <p className="text-xs text-stone-500 truncate">{user?.email}</p>
+                            </div>
                         </div>
 
-                        <nav className="bg-white rounded-2xl shadow-sm border border-sage-100 overflow-hidden">
+                        {/* Navigation Menu */}
+                        <nav className="bg-white rounded-2xl shadow-sm border border-sage-100 overflow-x-auto md:overflow-hidden flex md:flex-col scrollbar-hide snap-x">
                             {tabs.map((tab) => (
                                 <button
                                     key={tab.id}
                                     onClick={() => setActiveTab(tab.id)}
-                                    className={`w-full flex items-center gap-3 px-6 py-4 text-sm font-medium transition-colors text-left border-l-4 ${activeTab === tab.id
-                                        ? 'border-saffron-500 bg-sage-50 text-sage-900'
-                                        : 'border-transparent text-stone-500 hover:bg-stone-50 hover:text-sage-700'
+                                    className={`flex-shrink-0 snap-start flex items-center gap-2 md:gap-3 px-4 py-3 md:px-6 md:py-4 text-sm font-medium transition-colors whitespace-nowrap
+                                        ${activeTab === tab.id
+                                            ? 'border-b-2 md:border-b-0 md:border-l-4 border-saffron-500 bg-sage-50 text-sage-900'
+                                            : 'border-b-2 md:border-b-0 md:border-l-4 border-transparent text-stone-500 hover:bg-stone-50 hover:text-sage-700'
                                         }`}
                                 >
-                                    <tab.icon className={`w-5 h-5 ${activeTab === tab.id ? 'text-saffron-600' : 'text-stone-400'}`} />
+                                    <tab.icon className={`w-4 h-4 md:w-5 md:h-5 ${activeTab === tab.id ? 'text-saffron-600' : 'text-stone-400'}`} />
                                     {tab.label}
                                 </button>
                             ))}
                             <button
                                 onClick={signOut}
-                                className="w-full flex items-center gap-3 px-6 py-4 text-sm font-medium text-red-500 hover:bg-red-50 transition-colors text-left border-l-4 border-transparent"
+                                className="flex-shrink-0 snap-start flex items-center gap-2 md:gap-3 px-4 py-3 md:px-6 md:py-4 text-sm font-medium text-red-500 hover:bg-red-50 transition-colors whitespace-nowrap md:border-l-4 md:border-transparent"
                             >
-                                <LogOut className="w-5 h-5" />
-                                Sign Out
+                                <LogOut className="w-4 h-4 md:w-5 md:h-5" />
+                                <span className="hidden md:inline">Sign Out</span>
+                                <span className="md:hidden">Logout</span>
                             </button>
                         </nav>
                     </div>
@@ -200,7 +206,8 @@ const AddressesTab = () => {
     const { user } = useAuth();
     const [addresses, setAddresses] = useState([]);
     const [loading, setLoading] = useState(true);
-    const [showPicker, setShowPicker] = useState(false);
+    const [view, setView] = useState('list'); // list | picker | details
+    const [draftAddress, setDraftAddress] = useState(null);
     const [saving, setSaving] = useState(false);
 
     const fetchAddresses = async () => {
@@ -220,24 +227,40 @@ const AddressesTab = () => {
         fetchAddresses();
     }, [user]);
 
-    const handleAddAddress = async (addressData) => {
+    const handleLocationSelect = (addressData) => {
+        setDraftAddress({
+            ...addressData,
+            house_no: '',
+            landmark: '',
+            label: 'Home' // Default label
+        });
+        setView('details');
+    };
+
+    const handleFinalSave = async (e) => {
+        e.preventDefault();
         setSaving(true);
         try {
+            // Construct full address string
+            const fullAddr = `${draftAddress.house_no ? draftAddress.house_no + ', ' : ''}${draftAddress.street}, ${draftAddress.landmark ? 'Near ' + draftAddress.landmark + ', ' : ''}${draftAddress.city}, ${draftAddress.state} - ${draftAddress.zip_code}`;
+
             const { error } = await supabase.from('user_addresses').insert({
                 user_id: user.id,
-                full_address: addressData.full_address,
-                street: addressData.street,
-                city: addressData.city,
-                state: addressData.state,
-                country: addressData.country,
-                zip_code: addressData.zip_code,
-                coordinates: addressData.coordinates ? `(${addressData.coordinates.join(',')})` : null,
-                is_default: addresses.length === 0 // Make default if it's the first one
+                full_address: fullAddr,
+                street: draftAddress.street,
+                city: draftAddress.city,
+                state: draftAddress.state,
+                country: draftAddress.country,
+                zip_code: draftAddress.zip_code,
+                coordinates: draftAddress.coordinates ? `(${draftAddress.coordinates.join(',')})` : null,
+                is_default: addresses.length === 0,
+                label: draftAddress.label
             });
 
             if (error) throw error;
             await fetchAddresses();
-            setShowPicker(false);
+            setView('list');
+            setDraftAddress(null);
         } catch (error) {
             console.error('Error saving address:', error);
             alert('Failed to save address.');
@@ -272,14 +295,126 @@ const AddressesTab = () => {
         }
     };
 
-    if (showPicker) {
+    if (view === 'picker') {
         return (
             <div className="flex flex-col items-center justify-center min-h-[400px]">
                 <LocationPicker
-                    onSelectAddress={handleAddAddress}
-                    onCancel={() => setShowPicker(false)}
+                    onSelectAddress={handleLocationSelect}
+                    onCancel={() => setView('list')}
                 />
-                {saving && <p className="mt-4 text-sage-600 animate-pulse">Saving address...</p>}
+            </div>
+        );
+    }
+
+    if (view === 'details' && draftAddress) {
+        return (
+            <div className="bg-white rounded-3xl p-8 shadow-sm border border-sage-100 max-w-2xl mx-auto">
+                <div className="flex justify-between items-center mb-6 border-b border-sage-100 pb-4">
+                    <h3 className="font-serif font-bold text-xl text-sage-900">Confirm Address Details</h3>
+                    <Button variant="ghost" onClick={() => setView('picker')}>Back to Map</Button>
+                </div>
+
+                <form onSubmit={handleFinalSave} className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="md:col-span-2">
+                        <label className="block text-xs font-bold uppercase text-stone-500 mb-1">Detailed Location (From Map)</label>
+                        <p className="text-sm text-stone-700 bg-stone-50 p-3 rounded-lg border border-stone-200">
+                            {draftAddress.full_address}
+                        </p>
+                    </div>
+
+                    <div className="md:col-span-2">
+                        <label className="block text-xs font-bold uppercase text-stone-500 mb-1">Flat / House No / Building <span className="text-red-500">*</span></label>
+                        <input
+                            type="text"
+                            required
+                            value={draftAddress.house_no}
+                            onChange={e => setDraftAddress({ ...draftAddress, house_no: e.target.value })}
+                            placeholder="e.g. Flat 402, Sunshine Apartments"
+                            className="w-full p-3 bg-white border border-sage-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-sage-400"
+                        />
+                    </div>
+
+                    <div className="md:col-span-2">
+                        <label className="block text-xs font-bold uppercase text-stone-500 mb-1">Landmark (Optional)</label>
+                        <input
+                            type="text"
+                            value={draftAddress.landmark}
+                            onChange={e => setDraftAddress({ ...draftAddress, landmark: e.target.value })}
+                            placeholder="e.g. Near City Hospital"
+                            className="w-full p-3 bg-white border border-sage-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-sage-400"
+                        />
+                    </div>
+
+                    <div>
+                        <label className="block text-xs font-bold uppercase text-stone-500 mb-1">Street / Area</label>
+                        <input
+                            type="text"
+                            required
+                            value={draftAddress.street}
+                            onChange={e => setDraftAddress({ ...draftAddress, street: e.target.value })}
+                            className="w-full p-3 bg-white border border-sage-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-sage-400"
+                        />
+                    </div>
+
+                    <div>
+                        <label className="block text-xs font-bold uppercase text-stone-500 mb-1">City</label>
+                        <input
+                            type="text"
+                            required
+                            value={draftAddress.city}
+                            onChange={e => setDraftAddress({ ...draftAddress, city: e.target.value })}
+                            className="w-full p-3 bg-white border border-sage-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-sage-400"
+                        />
+                    </div>
+
+                    <div>
+                        <label className="block text-xs font-bold uppercase text-stone-500 mb-1">State</label>
+                        <input
+                            type="text"
+                            required
+                            value={draftAddress.state}
+                            onChange={e => setDraftAddress({ ...draftAddress, state: e.target.value })}
+                            className="w-full p-3 bg-white border border-sage-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-sage-400"
+                        />
+                    </div>
+
+                    <div>
+                        <label className="block text-xs font-bold uppercase text-stone-500 mb-1">Pincode</label>
+                        <input
+                            type="text"
+                            required
+                            value={draftAddress.zip_code}
+                            onChange={e => setDraftAddress({ ...draftAddress, zip_code: e.target.value })}
+                            className="w-full p-3 bg-white border border-sage-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-sage-400"
+                        />
+                    </div>
+
+                    <div className="md:col-span-2">
+                        <label className="block text-xs font-bold uppercase text-stone-500 mb-1">Address Label</label>
+                        <div className="flex gap-3">
+                            {['Home', 'Work', 'Other'].map(label => (
+                                <button
+                                    key={label}
+                                    type="button"
+                                    onClick={() => setDraftAddress({ ...draftAddress, label })}
+                                    className={`px-4 py-2 rounded-lg text-sm font-medium border ${draftAddress.label === label
+                                        ? 'bg-sage-900 text-white border-sage-900'
+                                        : 'bg-white text-stone-600 border-sage-200 hover:bg-sage-50'
+                                        }`}
+                                >
+                                    {label}
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+
+                    <div className="md:col-span-2 flex justify-end gap-3 mt-4 pt-4 border-t border-sage-100">
+                        <Button variant="ghost" onClick={() => setView('list')}>Cancel</Button>
+                        <Button type="submit" disabled={saving}>
+                            {saving ? 'Saving Address...' : 'Save Complete Address'}
+                        </Button>
+                    </div>
+                </form>
             </div>
         );
     }
@@ -289,11 +424,11 @@ const AddressesTab = () => {
     if (addresses.length === 0) {
         return (
             <div className="bg-white rounded-3xl p-8 shadow-sm border border-sage-100 min-h-[300px] flex items-center justify-center text-center">
-                <div>
+                <div className="text-center">
                     <MapPin className="w-12 h-12 text-sage-200 mx-auto mb-4" />
                     <h3 className="text-lg font-bold text-sage-900">No Saved Addresses</h3>
                     <p className="text-stone-500 mb-6">You haven't added any addresses yet.</p>
-                    <Button variant="outline" onClick={() => setShowPicker(true)}>Add New Address</Button>
+                    <Button variant="outline" onClick={() => setView('picker')}>Add New Address</Button>
                 </div>
             </div>
         );
@@ -303,7 +438,7 @@ const AddressesTab = () => {
         <div className="space-y-6">
             <div className="flex justify-between items-center">
                 <h3 className="font-serif font-bold text-xl text-sage-900">My Addresses</h3>
-                <Button size="sm" onClick={() => setShowPicker(true)}>+ Add New</Button>
+                <Button size="sm" onClick={() => setView('picker')}>+ Add New</Button>
             </div>
 
             <div className="grid gap-4">
