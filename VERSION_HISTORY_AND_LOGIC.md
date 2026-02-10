@@ -23,6 +23,7 @@ A chronological overview of major milestones and recent updates.
 *   **Refinement**: Removed "Book Lab Test" and "Health Plans" services from the homepage to streamline the initial user offering.
 *   **Layout Fix**: Adjusted the "Our Services" grid to properly display the remaining items across the full width.
 *   **Blog Editor**: Completely revamped the Blog Edit page (`BlogForm.jsx`) with a rich text editor (`react-quill-new`) and a modern, sidebar-layout UI for better writing experience.
+*   **Mobile UX**: Optimized `UserProfile.jsx` with a horizontal scrollable navigation bar for better mobile accessibility.
 *   **Documentation**: Added comprehensive `README.md` and this `VERSION_HISTORY.md`.
 *   **Organization**: Consolidated all SQL migration scripts into a dedicated `supabase sql` directory for better project structure.
 *   **UI/UX**: Enhanced the "Shop" and "Home" pages with improved mobile responsiveness and layout scaling.
