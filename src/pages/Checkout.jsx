@@ -200,6 +200,12 @@ const Checkout = () => {
                 return;
             }
 
+            // Enforce Map Selection for accuracy
+            if (!formData.coordinates) {
+                alert("Please click 'Pick Location on Map' to pinpoint your exact address for delivery.");
+                return;
+            }
+
             // If adding new address, save it now
             if (isAddingAddress && user) {
                 const { error } = await supabase.from('user_addresses').insert({
