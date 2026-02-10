@@ -34,8 +34,6 @@ const ProductManager = () => {
         }
     };
 
-    if (loading) return <div>Loading...</div>;
-
     // Filter Products
     const filteredProducts = products.filter(product => {
         if (!searchQuery) return true;
@@ -77,6 +75,8 @@ const ProductManager = () => {
 
     const startIndex = (currentPage - 1) * itemsPerPage;
     const currentProducts = sortedProducts.slice(startIndex, startIndex + itemsPerPage);
+
+    if (loading) return <div>Loading...</div>;
 
     return (
         <div>
