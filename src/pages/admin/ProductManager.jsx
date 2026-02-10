@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Plus, Edit, Trash2 } from 'lucide-react';
+import { Plus, Edit, Trash2, Search, X } from 'lucide-react';
 import { getProducts, getCategories, deleteProduct } from '../../lib/data';
 import Button from '../../components/Button';
 
@@ -9,6 +9,8 @@ const ProductManager = () => {
     const [categories, setCategories] = useState([]);
     const [loading, setLoading] = useState(true);
     const [currentPage, setCurrentPage] = useState(1);
+
+    const [searchQuery, setSearchQuery] = useState('');
 
     useEffect(() => {
         fetchProducts();
@@ -34,16 +36,40 @@ const ProductManager = () => {
 
     if (loading) return <div>Loading...</div>;
 
+    // Filter Products
+    const filteredProducts = products.filter(product => {
+        if (!searchQuery) return true;
+        const query = searchQuery.toLowerCase().trim();
+
+        // Product Name
+        if (product.name?.toLowerCase().includes(query)) return true;
+
+        // Brand
+        if (product.brand?.toLowerCase().includes(query)) return true;
+
+        // Category
+        const catId = Array.isArray(product.category) ? product.category[0] : product.category;
+        const cat = categories.find(c => c.id === catId || c.name === catId);
+        if (cat?.name.toLowerCase().includes(query)) return true;
+        if (String(catId).toLowerCase().includes(query)) return true;
+
+        // SKU (via variants)
+        const variants = product.product_variants || [];
+        if (variants.some(v => v.sku?.toLowerCase().includes(query))) return true;
+
+        return false;
+    });
+
     // Logic for Sorting and Pagination
     // 1. Sort Products Alphabetically
-    const sortedProducts = [...products].sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+    const sortedProducts = [...filteredProducts].sort((a, b) => (a.name || '').localeCompare(b.name || ''));
 
     // 2. Pagination
     const itemsPerPage = 10;
     const totalPages = Math.ceil(sortedProducts.length / itemsPerPage);
 
     // Ensure currentPage is valid
-    if (currentPage > totalPages && totalPages > 0 && currentPage !== 1) setCurrentPage(1);
+    if (currentPage > totalPages && totalPages > 0) setCurrentPage(1);
 
     const startIndex = (currentPage - 1) * itemsPerPage;
     const currentProducts = sortedProducts.slice(startIndex, startIndex + itemsPerPage);
@@ -57,6 +83,29 @@ const ProductManager = () => {
                         <Plus className="h-4 w-4" /> Add New
                     </Button>
                 </Link>
+            </div>
+
+            {/* Search Bar */}
+            <div className="bg-white p-4 rounded-xl border border-sage-200 shadow-sm mb-6">
+                <div className="relative">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-stone-400" />
+                    <input
+                        type="text"
+                        placeholder="Search by product name, SKU, category, or brand..."
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                        className="w-full pl-11 pr-4 py-2.5 bg-sage-50 hover:bg-white text-sage-900 placeholder:text-stone-400 rounded-lg text-sm border border-sage-200 shadow-sm focus:outline-none focus:ring-2 focus:ring-sage-500 focus:border-sage-500 transition-colors"
+                    />
+                    {searchQuery && (
+                        <button
+                            onClick={() => setSearchQuery('')}
+                            className="absolute right-3 top-1/2 -translate-y-1/2 text-stone-400 hover:text-stone-600 transition-colors"
+                            title="Clear search"
+                        >
+                            <X className="w-4 h-4" />
+                        </button>
+                    )}
+                </div>
             </div>
 
             <div className="bg-white rounded-xl shadow-sm overflow-hidden border border-sage-100">
