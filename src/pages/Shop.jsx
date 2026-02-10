@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useSearchParams, Link } from 'react-router-dom';
 import { Filter, ChevronDown, Star, ArrowRight, Search, X } from 'lucide-react';
-import { getProducts, getCategories, getConcerns } from '../lib/data';
+import { getProducts, getCategories, getConcerns, getBrands } from '../lib/data';
 import Button from '../components/Button';
 import { useCart } from '../context/CartContext';
 
@@ -9,6 +9,7 @@ const Shop = () => {
   const [products, setProducts] = useState([]);
   const [categories, setCategories] = useState([]);
   const [concerns, setConcerns] = useState([]);
+  const [brands, setBrands] = useState([]);
   const [filteredProducts, setFilteredProducts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchParams, setSearchParams] = useSearchParams();
@@ -17,6 +18,7 @@ const Shop = () => {
   // Filters
   const [selectedCategory, setSelectedCategory] = useState(searchParams.get('category') || 'All');
   const [selectedConcern, setSelectedConcern] = useState(searchParams.get('concern') || 'All');
+  const [selectedBrand, setSelectedBrand] = useState(searchParams.get('brand') || 'All');
   const [priceRange, setPriceRange] = useState([0, 10000]);
   const [sortBy, setSortBy] = useState('featured');
   const [showMobileFilters, setShowMobileFilters] = useState(false);
@@ -28,11 +30,14 @@ const Shop = () => {
       const [prodData, catData, conData] = await Promise.all([
         getProducts(),
         getCategories(),
-        getConcerns()
+        getCategories(),
+        getConcerns(),
+        getBrands()
       ]);
       setProducts(prodData);
       setCategories([{ id: 'All', name: 'All' }, ...catData]);
       setConcerns([{ id: 'All', name: 'All' }, ...conData]);
+      setBrands([{ id: 'All', name: 'All' }, ...brandData]);
       setLoading(false);
     };
     loadData();
@@ -65,6 +70,19 @@ const Shop = () => {
       });
     }
 
+    // Filter by Brand
+    if (selectedBrand !== 'All') {
+      const brandName = brands.find(b => b.id === selectedBrand)?.name || selectedBrand;
+      result = result.filter(p => {
+        // Match ID or Name (Product brand field might be name or ID)
+        if (p.brand === selectedBrand) return true;
+        if (p.brand === brandName) return true;
+        // Case insensitive check
+        if (typeof p.brand === 'string' && p.brand.toLowerCase() === brandName.toLowerCase()) return true;
+        return false;
+      });
+    }
+
     // Filter by Search Query (Name & Meta Keywords)
     if (searchQuery.trim()) {
       const query = searchQuery.toLowerCase();
@@ -90,7 +108,7 @@ const Shop = () => {
     }
 
     setFilteredProducts(result);
-  }, [products, selectedCategory, selectedConcern, priceRange, sortBy, searchQuery]);
+  }, [products, selectedCategory, selectedConcern, selectedBrand, priceRange, sortBy, searchQuery, brands]);
 
   // Helper to normalize category/concern to array of strings
   const normalizeToArray = (value) => {
@@ -128,9 +146,11 @@ const Shop = () => {
 
     const cat = searchParams.get('category');
     const con = searchParams.get('concern');
+    const brand = searchParams.get('brand');
     const search = searchParams.get('search');
     if (cat) setSelectedCategory(cat);
     if (con) setSelectedConcern(con);
+    if (brand) setSelectedBrand(brand);
     if (search) setSearchQuery(search);
   }, [searchParams, products]);
 
@@ -209,6 +229,29 @@ const Shop = () => {
                   ))}
                 </div>
               </div>
+
+              <div>
+                <h3 className="font-serif font-semibold text-lg mb-4 text-sage-900">Brands</h3>
+                <div className="space-y-2">
+                  {brands.map(brand => (
+                    <label key={brand.id} className="flex items-center gap-2 cursor-pointer group">
+                      <div className={`w-4 h-4 rounded-full border border-sage-300 flex items-center justify-center transition-colors ${String(selectedBrand) === String(brand.id) ? 'bg-sage-600 border-sage-600' : 'group-hover:border-sage-500'}`}>
+                        {String(selectedBrand) === String(brand.id) && <div className="w-2 h-2 rounded-full bg-white" />}
+                      </div>
+                      <input
+                        type="radio"
+                        name="brand"
+                        value={brand.id}
+                        checked={String(selectedBrand) === String(brand.id)}
+                        onChange={() => setSelectedBrand(brand.id)}
+                        className="hidden"
+                      />
+                      <span className={`text-sm ${String(selectedBrand) === String(brand.id) ? 'text-sage-900 font-medium' : 'text-stone-600'}`}>{brand.name}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+
             </div>
 
             {/* Mobile Footer Button */}
@@ -387,14 +430,14 @@ const Shop = () => {
               ) : (
                 <div className="col-span-2 md:col-span-3 lg:col-span-4 text-center py-20">
                   <h3 className="text-xl font-serif text-sage-800 mb-2">No products found</h3>
-                  <button onClick={() => { setSelectedCategory('All'); setSelectedConcern('All'); setSortBy('featured'); setSearchQuery(''); }} className="mt-4 text-saffron-600 underline font-medium">Clear filters</button>
+                  <button onClick={() => { setSelectedCategory('All'); setSelectedConcern('All'); setSelectedBrand('All'); setSortBy('featured'); setSearchQuery(''); }} className="mt-4 text-saffron-600 underline font-medium">Clear filters</button>
                 </div>
               )}
             </div>
           )}
         </div>
       </div>
-    </div>
+    </div >
   );
 };
 

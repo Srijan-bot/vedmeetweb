@@ -3,7 +3,8 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { ArrowRight, Star, Truck, ShieldCheck, Leaf, Heart, ArrowUpRight } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import Button from '../components/Button';
-import { getProducts, getSiteSettings, getCategories, getBlogs } from '../lib/data';
+import { getProducts, getSiteSettings, getCategories, getBlogs, getBrands } from '../lib/data';
+import { FileText, Stethoscope, ClipboardList, Activity } from 'lucide-react';
 import LeadModal from '../components/LeadModal';
 import { useCart } from '../context/CartContext';
 import heroImg from '../assets/hero.png';
@@ -12,6 +13,7 @@ import goldenSeal from '../assets/golden-seal.png';
 const Home = () => {
     const [featuredProducts, setFeaturedProducts] = useState([]);
     const [categories, setCategories] = useState([]);
+    const [brands, setBrands] = useState([]);
     const [blogs, setBlogs] = useState([]);
     const [heroData, setHeroData] = useState({
         hero_title: 'Pure Ayurveda,\nDelivered.',
@@ -28,6 +30,9 @@ const Home = () => {
 
             const cats = await getCategories();
             setCategories(cats || []);
+
+            const brandData = await getBrands();
+            setBrands(brandData || []);
 
             const blogPosts = await getBlogs();
             setBlogs(blogPosts.slice(0, 3));
@@ -114,6 +119,66 @@ const Home = () => {
                                     <p className="text-sage-300 text-sm">{item.desc}</p>
                                 </div>
                             </div>
+                        ))}
+                    </div>
+                </div>
+            </section>
+
+            {/* Shop by Brand */}
+            <section className="py-16 container mx-auto px-6">
+                <div className="flex justify-between items-end mb-8">
+                    <div>
+                        <span className="text-saffron-600 font-medium tracking-wider uppercase text-sm">Trusted Partners</span>
+                        <h2 className="text-3xl md:text-4xl font-serif font-bold text-sage-900 mt-2">Shop by Brand</h2>
+                    </div>
+                    <Link to="/shop" className="hidden md:flex text-sage-700 hover:text-saffron-600 transition-colors gap-2 items-center font-medium">
+                        View All Brands <ArrowRight className="w-4 h-4" />
+                    </Link>
+                </div>
+
+                <div className="relative">
+                    <div className="flex overflow-x-auto gap-6 pb-4 snap-x snap-mandatory scrollbar-hide -mx-6 px-6 md:mx-0 md:px-0">
+                        {brands.map((brand) => (
+                            <Link key={brand.id} to={`/shop?brand=${brand.id}`} className="shrink-0 snap-center flex flex-col items-center gap-3 w-28 md:w-32 group cursor-pointer">
+                                <div className="w-24 h-24 md:w-28 md:h-28 rounded-full bg-white border border-stone-100 shadow-sm flex items-center justify-center p-4 group-hover:border-saffron-400 group-hover:shadow-md transition-all duration-300">
+                                    {brand.logo ? (
+                                        <img src={brand.logo} alt={brand.name} className="w-full h-full object-contain filter grayscale group-hover:grayscale-0 transition-all duration-300" />
+                                    ) : (
+                                        <span className="text-2xl font-serif font-bold text-sage-300 group-hover:text-saffron-500 transition-colors">{brand.name.charAt(0)}</span>
+                                    )}
+                                </div>
+                                <span className="text-sm font-medium text-sage-800 text-center group-hover:text-saffron-600 transition-colors line-clamp-1">{brand.name}</span>
+                            </Link>
+                        ))}
+                    </div>
+                </div>
+            </section>
+
+            {/* Our Services */}
+            <section className="py-16 bg-white">
+                <div className="container mx-auto px-6">
+                    <div className="text-center mb-12">
+                        <span className="text-saffron-600 font-medium tracking-wider uppercase text-sm">Comprehensive Care</span>
+                        <h2 className="text-3xl md:text-4xl font-serif font-bold text-sage-900 mt-2">Our Services</h2>
+                    </div>
+
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4 md:gap-8">
+                        {[
+                            { icon: FileText, title: "Upload Prescription", desc: "Get medicines delivered", link: "/prescriptions", color: "bg-blue-50 text-blue-600" },
+                            { icon: Stethoscope, title: "Consult Doctor", desc: "Expert ayurvedic advice", link: "/book-appointment", color: "bg-green-50 text-green-600" },
+                            { icon: ClipboardList, title: "Book Lab Test", desc: "Home sample collection", link: "/lab-tests", color: "bg-purple-50 text-purple-600" },
+                            { icon: Activity, title: "Health Plans", desc: "Personalized wellness", link: "/plans", color: "bg-orange-50 text-orange-600" }
+                        ].map((service, index) => (
+                            <Link key={index} to={service.link} className="bg-stone-50 rounded-2xl p-6 hover:bg-white hover:shadow-xl transition-all duration-300 border border-transparent hover:border-stone-100 group text-center md:text-left flex flex-col items-center md:items-start">
+                                <div className={`w-12 h-12 rounded-xl ${service.color} flex items-center justify-center mb-4 group-hover:scale-110 transition-transform duration-300`}>
+                                    <service.icon className="w-6 h-6" />
+                                </div>
+                                <h3 className="font-serif font-bold text-lg text-sage-900 mb-1">{service.title}</h3>
+                                <p className="text-stone-500 text-sm mb-4">{service.desc}</p>
+                                <span className="text-xs font-bold uppercase tracking-wider text-sage-400 group-hover:text-saffron-600 transition-colors mt-auto flex items-center gap-1">
+                                    Learn More <ArrowRight className="w-3 h-3" />
+                                </span>
+                            </Link>
                         ))}
                     </div>
                 </div>
