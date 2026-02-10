@@ -128,11 +128,12 @@ const Inventory = () => {
     const handleExportCSV = () => {
         if (!variants.length) return;
 
-        const headers = ["Product Name", "Variant Name", "SKU", "Category", "Brand", "Stock Quantity", "Price", "Cost Price", "Tax %"];
+        const headers = ["Product Name", "Variant Name", "SKU", "HSN Code", "Category", "Brand", "Stock Quantity", "Price", "Cost Price", "Tax %"];
         const rows = filteredVariantsWithBrand.map(v => [
             v.products?.name || "",
             v.name || "",
             v.sku || "",
+            v.hsn_code || v.products?.hsn_code || "",
             Array.isArray(v.products?.category) ? v.products.category.join(", ") : v.products?.category || "",
             v.products?.brand || "",
             v.stock_quantity || 0,
@@ -178,9 +179,29 @@ const Inventory = () => {
     };
 
     const filteredVariants = variants.filter(v => {
-        const matchesSearch = v.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-            v.sku.toLowerCase().includes(searchQuery.toLowerCase()) ||
-            (v.products?.name || '').toLowerCase().includes(searchQuery.toLowerCase());
+        // Enhanced Search: Product Name, Variant Name, SKU, HSN Code, Batch Numbers, Brand
+        const matchesSearch = (() => {
+            if (!searchQuery) return true;
+            const query = searchQuery.toLowerCase().trim();
+
+            // Search in basic fields
+            if (v.name.toLowerCase().includes(query)) return true;
+            if (v.sku?.toLowerCase().includes(query)) return true;
+            if ((v.products?.name || '').toLowerCase().includes(query)) return true;
+
+            // Search in HSN code
+            if (v.hsn_code?.toLowerCase().includes(query)) return true;
+            if (v.products?.hsn_code?.toLowerCase().includes(query)) return true;
+
+            // Search in brand
+            if ((v.products?.brand || '').toLowerCase().includes(query)) return true;
+
+            // Search in batch numbers
+            const variantBatches = batches.filter(b => b.variant_id === v.id);
+            if (variantBatches.some(b => b.batch_number?.toLowerCase().includes(query))) return true;
+
+            return false;
+        })();
 
         // Enhanced Category Matching
         const matchesCategory = (() => {
@@ -261,72 +282,96 @@ const Inventory = () => {
             </div>
 
             {/* Controls Bar */}
-            <div className="bg-white p-4 rounded-xl border border-sage-200 shadow-sm flex flex-wrap items-center justify-between gap-4">
-                {/* Filters */}
-                <div className="flex flex-wrap gap-3">
-                    <select
-                        value={filterCategory}
-                        onChange={(e) => setFilterCategory(e.target.value)}
-                        className="px-4 py-2 bg-white hover:bg-sage-50 text-sage-700 rounded-lg text-sm border border-sage-200 shadow-sm min-w-[180px] focus:outline-none focus:ring-2 focus:ring-sage-500"
-                    >
-                        <option value="">Category: All Categories</option>
-                        {categories.map(cat => (
-                            <option key={cat.id} value={cat.id}>{cat.name}</option>
-                        ))}
-                    </select>
-
-                    <select
-                        value={filterStatus}
-                        onChange={(e) => setFilterStatus(e.target.value)}
-                        className="px-4 py-2 bg-white hover:bg-sage-50 text-sage-700 rounded-lg text-sm border border-sage-200 shadow-sm min-w-[180px] focus:outline-none focus:ring-2 focus:ring-sage-500"
-                    >
-                        <option value="">Stock Status: All Status</option>
-                        <option value="In Stock">In Stock</option>
-                        <option value="Low">Low Stock</option>
-                        <option value="Critical">Critical</option>
-                    </select>
-
-                    {/* Expiry Placeholder - Complex logic dependent on batches */}
-                    <select
-                        value={filterExpiry}
-                        onChange={(e) => setFilterExpiry(e.target.value)}
-                        className="px-4 py-2 bg-white hover:bg-sage-50 text-sage-700 rounded-lg text-sm border border-sage-200 shadow-sm min-w-[180px] focus:outline-none focus:ring-2 focus:ring-sage-500"
-                    >
-                        <option value="">Expiry: All Items</option>
-                        <option value="expiring_soon">Expiring Soon (&lt; 90 days)</option>
-                        <option value="expired">Expired</option>
-                    </select>
-
-                    <select
-                        value={filterBrand}
-                        onChange={(e) => setFilterBrand(e.target.value)}
-                        className="px-4 py-2 bg-white hover:bg-sage-50 text-sage-700 rounded-lg text-sm border border-sage-200 shadow-sm min-w-[180px] focus:outline-none focus:ring-2 focus:ring-sage-500"
-                    >
-                        <option value="">Supplier: All Suppliers</option>
-                        {brands.map(brand => (
-                            <option key={brand.id} value={brand.name}>{brand.name}</option>
-                        ))}
-                    </select>
+            <div className="bg-white p-4 rounded-xl border border-sage-200 shadow-sm space-y-4">
+                {/* Search Bar */}
+                <div className="relative">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-stone-400" />
+                    <input
+                        type="text"
+                        placeholder="Search by product name, SKU, HSN code, batch number, brand..."
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                        className="w-full pl-11 pr-4 py-2.5 bg-sage-50 hover:bg-white text-sage-900 placeholder:text-stone-400 rounded-lg text-sm border border-sage-200 shadow-sm focus:outline-none focus:ring-2 focus:ring-sage-500 focus:border-sage-500 transition-colors"
+                    />
+                    {searchQuery && (
+                        <button
+                            onClick={() => setSearchQuery('')}
+                            className="absolute right-3 top-1/2 -translate-y-1/2 text-stone-400 hover:text-stone-600 transition-colors"
+                            title="Clear search"
+                        >
+                            <X className="w-4 h-4" />
+                        </button>
+                    )}
                 </div>
 
-                {/* Actions */}
-                <div className="flex items-center gap-3">
-                    <button onClick={() => setIsBatchInwardOpen(true)} className="flex items-center gap-2 px-4 py-2 bg-white hover:bg-sage-50 text-sage-700 rounded-lg text-sm font-medium border border-sage-200 shadow-sm transition-colors">
-                        <Plus className="w-4 h-4" />
-                        Add Stock
-                    </button>
-                    <button onClick={() => setIsAdjustOpen(true)} className="flex items-center gap-2 px-4 py-2 bg-white hover:bg-sage-50 text-sage-700 rounded-lg text-sm font-medium border border-sage-200 shadow-sm transition-colors">
-                        <RefreshCw className="w-4 h-4" />
-                        Adjust Stock
-                    </button>
-                    <button onClick={() => setIsTransferOpen(true)} className="flex items-center gap-2 px-4 py-2 bg-white hover:bg-sage-50 text-sage-700 rounded-lg text-sm font-medium border border-sage-200 shadow-sm transition-colors">
-                        <ArrowLeftRight className="w-4 h-4" />
-                        Transfer Stock
-                    </button>
-                    <button onClick={handleExportCSV} className="flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-sm font-medium shadow-sm transition-colors">
-                        <Download className="w-4 h-4" />
-                        Export CSV
-                    </button>
+                {/* Filters and Actions Row */}
+                <div className="flex flex-wrap items-center justify-between gap-4">
+                    {/* Filters */}
+                    <div className="flex flex-wrap gap-3">
+                        <select
+                            value={filterCategory}
+                            onChange={(e) => setFilterCategory(e.target.value)}
+                            className="px-4 py-2 bg-white hover:bg-sage-50 text-sage-700 rounded-lg text-sm border border-sage-200 shadow-sm min-w-[180px] focus:outline-none focus:ring-2 focus:ring-sage-500"
+                        >
+                            <option value="">Category: All Categories</option>
+                            {categories.map(cat => (
+                                <option key={cat.id} value={cat.id}>{cat.name}</option>
+                            ))}
+                        </select>
+
+                        <select
+                            value={filterStatus}
+                            onChange={(e) => setFilterStatus(e.target.value)}
+                            className="px-4 py-2 bg-white hover:bg-sage-50 text-sage-700 rounded-lg text-sm border border-sage-200 shadow-sm min-w-[180px] focus:outline-none focus:ring-2 focus:ring-sage-500"
+                        >
+                            <option value="">Stock Status: All Status</option>
+                            <option value="In Stock">In Stock</option>
+                            <option value="Low">Low Stock</option>
+                            <option value="Critical">Critical</option>
+                        </select>
+
+                        {/* Expiry Placeholder - Complex logic dependent on batches */}
+                        <select
+                            value={filterExpiry}
+                            onChange={(e) => setFilterExpiry(e.target.value)}
+                            className="px-4 py-2 bg-white hover:bg-sage-50 text-sage-700 rounded-lg text-sm border border-sage-200 shadow-sm min-w-[180px] focus:outline-none focus:ring-2 focus:ring-sage-500"
+                        >
+                            <option value="">Expiry: All Items</option>
+                            <option value="expiring_soon">Expiring Soon (&lt; 90 days)</option>
+                            <option value="expired">Expired</option>
+                        </select>
+
+                        <select
+                            value={filterBrand}
+                            onChange={(e) => setFilterBrand(e.target.value)}
+                            className="px-4 py-2 bg-white hover:bg-sage-50 text-sage-700 rounded-lg text-sm border border-sage-200 shadow-sm min-w-[180px] focus:outline-none focus:ring-2 focus:ring-sage-500"
+                        >
+                            <option value="">Supplier: All Suppliers</option>
+                            {brands.map(brand => (
+                                <option key={brand.id} value={brand.name}>{brand.name}</option>
+                            ))}
+                        </select>
+                    </div>
+
+                    {/* Actions */}
+                    <div className="flex items-center gap-3">
+                        <button onClick={() => setIsBatchInwardOpen(true)} className="flex items-center gap-2 px-4 py-2 bg-white hover:bg-sage-50 text-sage-700 rounded-lg text-sm font-medium border border-sage-200 shadow-sm transition-colors">
+                            <Plus className="w-4 h-4" />
+                            Add Stock
+                        </button>
+                        <button onClick={() => setIsAdjustOpen(true)} className="flex items-center gap-2 px-4 py-2 bg-white hover:bg-sage-50 text-sage-700 rounded-lg text-sm font-medium border border-sage-200 shadow-sm transition-colors">
+                            <RefreshCw className="w-4 h-4" />
+                            Adjust Stock
+                        </button>
+                        <button onClick={() => setIsTransferOpen(true)} className="flex items-center gap-2 px-4 py-2 bg-white hover:bg-sage-50 text-sage-700 rounded-lg text-sm font-medium border border-sage-200 shadow-sm transition-colors">
+                            <ArrowLeftRight className="w-4 h-4" />
+                            Transfer Stock
+                        </button>
+                        <button onClick={handleExportCSV} className="flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-sm font-medium shadow-sm transition-colors">
+                            <Download className="w-4 h-4" />
+                            Export CSV
+                        </button>
+                    </div>
                 </div>
             </div>
 
@@ -338,6 +383,7 @@ const Inventory = () => {
                             <tr>
                                 <th className="px-6 py-4">Product Name</th>
                                 <th className="px-6 py-4">SKU / Variant</th>
+                                <th className="px-6 py-4">HSN Code</th>
                                 <th className="px-6 py-4">Category</th>
                                 <th className="px-6 py-4">Current Stock</th>
                                 <th className="px-6 py-4">Batch Count</th>
@@ -425,6 +471,7 @@ const Inventory = () => {
                                                             </div>
                                                         </td>
                                                         <td className="px-6 py-4 text-sm text-stone-400 font-mono">-</td>
+                                                        <td className="px-6 py-4 text-xs text-stone-500 font-mono">{product.hsn_code || '-'}</td>
                                                         <td className="px-6 py-4 text-sm text-sage-700 font-medium">
                                                             {(() => {
                                                                 const pCats = normalizeToArray(product.category);
@@ -484,6 +531,7 @@ const Inventory = () => {
                                                                         </div>
                                                                     </td>
                                                                     <td className="px-6 py-3 text-sm text-stone-500 font-mono">{variant.sku}</td>
+                                                                    <td className="px-6 py-3 text-xs text-stone-500 font-mono">{variant.hsn_code || product.hsn_code || '-'}</td>
                                                                     <td className="px-6 py-3 text-sm text-stone-400"></td>
                                                                     <td className="px-6 py-3 text-sm text-sage-600 font-medium">{variant.stock_quantity}</td>
                                                                     <td className="px-6 py-3 text-sm text-stone-500">{batchCount}</td>
