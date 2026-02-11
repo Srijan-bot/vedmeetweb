@@ -34,6 +34,11 @@ exports.useSearchMovie = function useSearchMovie(dcOrVars, varsOrOptions, option
 }
 exports.useCreateMovie = function useCreateMovie(dcOrOptions, options) {
   const { dc: dcInstance, vars: inputOpts } = validateArgs(connectorConfig, dcOrOptions, options);
+  /**
+   * Build a data reference for the createMovie operation using the provided variables.
+   * @param {Object} vars - Variables required to create a movie (fields used by the create operation).
+   * @returns {Object} A data-connect reference configured to create a movie with the given variables.
+   */
   function refFactory(vars) {
     return createMovieRef(dcInstance, vars);
   }
@@ -42,6 +47,11 @@ exports.useCreateMovie = function useCreateMovie(dcOrOptions, options) {
 
 exports.useUpsertUser = function useUpsertUser(dcOrOptions, options) {
   const { dc: dcInstance, vars: inputOpts } = validateArgs(connectorConfig, dcOrOptions, options);
+  /**
+   * Create a DataConnect reference for an upsert user operation using the captured DataConnect instance.
+   * @param {object} vars - Variables for the upsert user operation (user fields and identifiers).
+   * @returns {object} A DataConnect reference configured to perform the upsertUser operation.
+   */
   function refFactory(vars) {
     return upsertUserRef(dcInstance, vars);
   }
@@ -50,6 +60,11 @@ exports.useUpsertUser = function useUpsertUser(dcOrOptions, options) {
 
 exports.useAddReview = function useAddReview(dcOrOptions, options) {
   const { dc: dcInstance, vars: inputOpts } = validateArgs(connectorConfig, dcOrOptions, options);
+  /**
+   * Create a data-connect reference for the addReview mutation using the captured connector instance.
+   * @param {object} vars - Variables for the addReview operation.
+   * @returns {object} A data-connect reference for invoking the addReview mutation.
+   */
   function refFactory(vars) {
     return addReviewRef(dcInstance, vars);
   }
@@ -58,6 +73,11 @@ exports.useAddReview = function useAddReview(dcOrOptions, options) {
 
 exports.useDeleteReview = function useDeleteReview(dcOrOptions, options) {
   const { dc: dcInstance, vars: inputOpts } = validateArgs(connectorConfig, dcOrOptions, options);
+  /**
+   * Create a data-connect reference for the `deleteReview` operation using the captured DataConnect instance and provided variables.
+   * @param {Object} vars - Variables for the `deleteReview` operation (e.g., identifiers or payload).
+   * @returns {Object} A data-connect reference configured to perform the `deleteReview` operation.
+   */
   function refFactory(vars) {
     return deleteReviewRef(dcInstance, vars);
   }

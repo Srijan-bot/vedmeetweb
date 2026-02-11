@@ -57,6 +57,11 @@ import ScrollToTop from './components/ScrollToTop';
 import MaintenanceGate from './components/MaintenanceGate';
 import { Outlet } from 'react-router-dom';
 
+/**
+ * Root application component that configures global providers, UI helpers, and the client-side route tree for public, admin, and inventory sections.
+ *
+ * @returns {JSX.Element} The app root element containing the CartProvider, global UI components, and configured Routes.
+ */
 function App() {
   return (
     <CartProvider>
