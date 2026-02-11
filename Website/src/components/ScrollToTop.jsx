@@ -1,6 +1,11 @@
 import { useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
 
+/**
+ * Scrolls the window to the top whenever the current route pathname changes.
+ *
+ * Renders nothing (returns null).
+ */
 export default function ScrollToTop() {
     const { pathname } = useLocation();
 

@@ -4,17 +4,12 @@
  */
 
 /**
- * Allocates inventory for a list of order items from available stock batches.
- * 
- * @param {Array} orderItems - List of items to allocate. Each item: { sku, qty, strategy? }
- * @param {Array} availableStock - List of available stock batches. Each batch: 
- *                                 { batchId, sku, quantity, expiryDate, createdAt }
- * @param {String} defaultStrategy - Global strategy if not specified per item ('FIFO', 'FEFO', 'LIFO').
- * @returns {Object} - Allocation result: 
- *                     { 
- *                       allocations: [{ sku, requestedQty, allocatedQty, batches: [{ batchId, qty }] }],
- *                       missing: [{ sku, missingQty }] 
- *                     }
+ * Allocate requested quantities of order items from available stock batches using FIFO, FEFO, or LIFO strategies.
+ *
+ * @param {Array<{sku: string, qty: number, strategy?: string}>} orderItems - Items to allocate; each entry must include `sku` and `qty`; `strategy` overrides the default for that item.
+ * @param {Array<{batchId: string, sku: string, quantity: number, expiryDate?: string|null, createdAt: string}>} availableStock - Inventory batches available for allocation.
+ * @param {string} [defaultStrategy='FIFO'] - Strategy to use when an item does not specify one: `'FIFO'`, `'FEFO'`, or `'LIFO'`.
+ * @returns {{allocations: Array<{sku: string, requestedQty: number, allocatedQty: number, batches: Array<{batchId: string, qty: number, strategyUsed: string, batchDate: string|null}>}>, missing: Array<{sku: string, missingQty: number}>}} An object containing `allocations` (per-item allocation details and the batches used) and `missing` (items with any unfulfilled quantity).
  */
 export function allocateInventory(orderItems, availableStock, defaultStrategy = 'FIFO') {
     const stockBySku = {};
@@ -86,7 +81,14 @@ export function allocateInventory(orderItems, availableStock, defaultStrategy = 
 }
 
 /**
- * Sorts batches in-place based on strategy.
+ * Order an array of stock batches in-place according to the chosen allocation strategy.
+ *
+ * FEFO orders by `expiryDate` ascending (earliest expiry first), placing batches with a null `expiryDate` after expiring batches.
+ * LIFO orders by `createdAt` descending (newest first).
+ * FIFO (default) orders by `createdAt` ascending (oldest first).
+ *
+ * @param {Array<Object>} batches - Array of batch objects to sort in-place; expected to have `expiryDate` and `createdAt` properties.
+ * @param {string} [strategy] - Allocation strategy: `'FEFO'`, `'LIFO'`, or `'FIFO'` (default).
  */
 function sortBatches(batches, strategy) {
     if (strategy === 'FEFO') {

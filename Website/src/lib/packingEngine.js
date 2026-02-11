@@ -4,9 +4,39 @@
  */
 
 /**
- * Optimizes packing for a given order.
- * @param {Object} input - The input JSON object containing items, cartons, and constraints.
- * @returns {Object} - The optimized packing result.
+ * Produces a packing plan that assigns order items to the best-fit cartons to minimize billable weight while respecting dimensional and weight constraints.
+ *
+ * @param {Object} input - Input configuration for packing.
+ * @param {string} input.orderId - External order identifier.
+ * @param {number} [input.volumetricDivisor=5000] - Divisor used to convert carton volume to volumetric weight.
+ * @param {number} [input.packingClearanceCm=0] - Clearance added to reported carton inner dimensions.
+ * @param {Array<Object>} input.items - Array of item definitions; each item must include at least:
+ *   - {string} sku
+ *   - {number} qty
+ *   - {number} weightKg
+ *   - {Object} dimensionsCm with numeric L, W, H
+ *   - {boolean} [rotatable]
+ *   - {boolean} [uprightOnly]
+ *   - {boolean} [fragile]
+ * @param {Array<Object>} input.cartons - Array of carton definitions; each carton must include at least:
+ *   - {string} cartonId
+ *   - {Object} innerDimensionsCm with numeric L, W, H
+ *   - {number} emptyWeightKg
+ *   - {number} maxWeightKg
+ *
+ * @returns {Object} The packing result containing:
+ *   - {string} orderId
+ *   - {Array<Object>} recommendedCartons — list of committed cartons with fields:
+ *       - {string} cartonId
+ *       - {Object} finalDimensionsCm {L, W, H} (inner dimensions plus clearance)
+ *       - {number} deadWeightKg (carton empty weight + packed item weights, rounded to 2 decimals)
+ *       - {number} volumetricWeightKg (carton volumetric weight, rounded to 2 decimals)
+ *       - {number} billableWeightKg (max of dead and volumetric weight, rounded to 2 decimals)
+ *       - {Array<string>} itemsPacked (SKUs packed into the carton)
+ *       - {string} layoutStrategy (e.g., "Layered Best Fit")
+ *       - {Array<Object>} layers (per-carton layer details)
+ *   - {Array<string>} optimizationReason — human-readable summary(s) of outcome
+ *   - {Array<string>} constraintViolations — any constraint messages for items that could not be packed
  */
 function optimizePacking(input) {
     const { orderId, volumetricDivisor = 5000, packingClearanceCm = 0, items, cartons } = input;
@@ -114,6 +144,16 @@ function optimizePacking(input) {
     return result;
 }
 
+/**
+ * Selects the preferred packing solution between a current best and a candidate using packing priorities.
+ *
+ * Preference order: 1) maximize the number of packed items, 2) if counts are equal, prefer the lower billable weight.
+ *
+ * @param {Object|null} currentBest - The currently selected best solution, or `null` if none.
+ * @param {Object} candidate - The candidate solution to compare.
+ * @param {number} totalRemainingCount - Total number of items remaining to pack (not used in comparison).
+ * @returns {boolean} `true` if the candidate is preferred over `currentBest`, `false` otherwise.
+ */
 function isBetterSolution(currentBest, candidate, totalRemainingCount) {
     if (!currentBest) return true;
 
@@ -131,7 +171,14 @@ function isBetterSolution(currentBest, candidate, totalRemainingCount) {
 }
 
 /**
- * Tries to pack as many items as possible into a specific carton.
+ * Pack as many individual items as possible into the given carton using a layered placement strategy.
+ *
+ * Attempts to fill the carton's inner volume and weight allowance by forming successive horizontal layers until no further items fit or height/weight limits are reached. The algorithm respects item constraints such as fragility and orientation (e.g., upright-only liquids) and prioritizes non-fragile and larger-volume items.
+ *
+ * @param {Array<Object>} items - Expanded per-unit items to place; each item must include `id`, `sku`, `dimensionsCm` (`L`, `W`, `H`), `weightKg`, and constraint flags (e.g., `fragile`, `rotatable`, `uprightOnly`).
+ * @param {Object} carton - Carton definition containing `innerDimensionsCm` (`L`, `W`, `H`), `maxWeightKg`, and `emptyWeightKg`.
+ * @param {number} clearance - Packing clearance in centimeters to account for when reporting final carton dimensions (not applied to placement logic here).
+ * @returns {{ packedItems: Array<Object>, layers: Array<{heightCm: number, items: Array<string>}> }} An object with `packedItems` (the item objects that were placed) and `layers` (an ordered list of layers with `heightCm` and an array of item SKUs placed in that layer).
  */
 function packItemsIntoCarton(items, carton, clearance) {
     const L = carton.innerDimensionsCm.L;
@@ -186,8 +233,17 @@ function packItemsIntoCarton(items, carton, clearance) {
 }
 
 /**
- * Forms a single layer of items ensuring they fit in L x W.
- * Returns items in layer, layer height, layer weight.
+ * Build a single horizontal layer by selecting and placing candidate items within an L×W footprint,
+ * respecting the maximum layer height and remaining weight capacity.
+ * @param {Array<Object>} candidates - Candidate item objects (each must include id, weightKg and dimensions/rotation flags used by getAllowedOrientations).
+ * @param {number} maxL - Available layer length (cm).
+ * @param {number} maxW - Available layer width (cm).
+ * @param {number} maxH - Maximum allowed layer height (cm).
+ * @param {number} maxWeightAllowed - Remaining allowable weight for the layer (kg).
+ * @returns {{items: Array<Object>, height: number, weight: number}} An object with:
+ *  - `items`: the subset of candidates placed in this layer (in placement order),
+ *  - `height`: the resulting layer height in cm (maximum item height placed),
+ *  - `weight`: the total weight of items placed in kg.
  */
 function formLayer(candidates, maxL, maxW, maxH, maxWeightAllowed) {
     const layerItems = [];
@@ -233,6 +289,25 @@ function formLayer(candidates, maxL, maxW, maxH, maxWeightAllowed) {
     };
 }
 
+/**
+ * Determine all axis-aligned orientations of an item that fit within a given height limit.
+ *
+ * Returns unique orientation objects that respect the item's rotation constraints:
+ * - If `rotatable === false`, only the original orientation is considered.
+ * - If `uprightOnly` is true, only orientations that keep the original height (H) are considered, with L/W swap allowed.
+ * - Otherwise, all height-respecting permutations are considered and L/W swapping is included.
+ * Orientations are sorted by footprint area (L × W) in descending order.
+ *
+ * @param {Object} item - Item descriptor.
+ * @param {Object} item.dimensionsCm - Item dimensions in centimeters.
+ * @param {number} item.dimensionsCm.L - Length.
+ * @param {number} item.dimensionsCm.W - Width.
+ * @param {number} item.dimensionsCm.H - Height.
+ * @param {boolean} [item.rotatable] - If false, disallow all rotations.
+ * @param {boolean} [item.uprightOnly] - If true, preserve the original height while allowing L/W swap.
+ * @param {number} maxH - Maximum allowed height for the orientation (cm).
+ * @returns {Array<{l: number, w: number, h: number}>} Array of feasible orientations, each with `l`, `w`, and `h` in cm, sorted by descending footprint area.
+ */
 function getAllowedOrientations(item, maxH) {
     // item.dimensionsCm {L, W, H}
     const dims = [item.dimensionsCm.L, item.dimensionsCm.W, item.dimensionsCm.H];
@@ -292,7 +367,16 @@ function getAllowedOrientations(item, maxH) {
 }
 
 /**
- * Finds a coordinate (x,y) to place a rectangle l*w within maxL*maxW avoiding overlaps.
+ * Finds a placement coordinate for a rectangle inside a bounded footprint without overlapping existing rectangles.
+ *
+ * Considers anchor points at the origin and at the right and bottom corners of each existing rectangle, prioritizing points by smallest Y then X (top-left first). Returns the first anchor that fits within bounds and does not intersect any existing rectangle.
+ *
+ * @param {{x: number, y: number, l: number, w: number}[]} existingRects - Already placed rectangles with top-left coordinate (x,y) and dimensions l (length in X) and w (width in Y).
+ * @param {number} l - Length of the rectangle to place (size along X).
+ * @param {number} w - Width of the rectangle to place (size along Y).
+ * @param {number} maxL - Maximum allowed length (X extent) of the footprint.
+ * @param {number} maxW - Maximum allowed width (Y extent) of the footprint.
+ * @returns {{x: number, y: number} | null} The top-left coordinate where the rectangle can be placed, or `null` if no non-overlapping position fits.
  */
 function findPosition(existingRects, l, w, maxL, maxW) {
     if (existingRects.length === 0) {
@@ -329,6 +413,18 @@ function findPosition(existingRects, l, w, maxL, maxW) {
     return null;
 }
 
+/**
+ * Determine whether two axis-aligned rectangles intersect.
+ * @param {number} x1 - X coordinate of the first rectangle's top-left corner.
+ * @param {number} y1 - Y coordinate of the first rectangle's top-left corner.
+ * @param {number} l1 - Length (extent along X) of the first rectangle.
+ * @param {number} w1 - Width (extent along Y) of the first rectangle.
+ * @param {number} x2 - X coordinate of the second rectangle's top-left corner.
+ * @param {number} y2 - Y coordinate of the second rectangle's top-left corner.
+ * @param {number} l2 - Length (extent along X) of the second rectangle.
+ * @param {number} w2 - Width (extent along Y) of the second rectangle.
+ * @returns {boolean} `true` if the rectangles overlap, `false` otherwise.
+ */
 function rectIntersect(x1, y1, l1, w1, x2, y2, l2, w2) {
     return x1 < x2 + l2 &&
         x1 + l1 > x2 &&
