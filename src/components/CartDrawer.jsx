@@ -6,7 +6,7 @@ import Button from './Button';
 import { useNavigate } from 'react-router-dom';
 
 const CartDrawer = () => {
-    const { isCartOpen, setIsCartOpen, cartItems, removeFromCart, updateQuantity, cartTotal } = useCart();
+    const { isCartOpen, setIsCartOpen, cartItems, removeFromCart, updateQuantity, cartTotal, cartSubtotal, cartDiscount } = useCart();
     const navigate = useNavigate();
 
     const handleCheckout = () => {
@@ -62,7 +62,6 @@ const CartDrawer = () => {
                             ) : (
                                 cartItems.map((item) => (
                                     <div key={`${item.id}-${item.variantId || 'default'}`} className="flex gap-4 p-4 bg-sage-50/50 rounded-xl">
-                                        {/* ... item rendering ... */}
                                         <img
                                             src={item.image}
                                             alt={item.name}
@@ -71,7 +70,14 @@ const CartDrawer = () => {
                                         <div className="flex-1 flex flex-col justify-between">
                                             <div>
                                                 <h3 className="font-medium text-sage-900 line-clamp-1">{item.name}</h3>
-                                                <p className="text-sm text-stone-500">Rs. {(item.price * (1 + (item.gst_rate || 0) / 100)).toFixed(2)}</p>
+                                                <p className="text-sm text-stone-500">
+                                                    Rs. {item.price.toFixed(2)}
+                                                    {item.bundle_discount > 0 && (
+                                                        <span className="text-xs text-green-600 block">
+                                                            Bundle Offer: -Rs. {item.bundle_discount.toFixed(2)}
+                                                        </span>
+                                                    )}
+                                                </p>
                                             </div>
                                             <div className="flex items-center justify-between">
                                                 <div className="flex items-center border border-sage-200 rounded-md bg-white">
@@ -105,9 +111,19 @@ const CartDrawer = () => {
 
                         {/* Footer */}
                         {cartItems.length > 0 && (
-                            <div className="p-4 border-t border-sage-100 bg-sage-50/30 space-y-4">
-                                <div className="flex items-center justify-between text-lg font-bold text-sage-900">
+                            <div className="p-4 border-t border-sage-100 bg-sage-50/30 space-y-2">
+                                <div className="flex items-center justify-between text-stone-600">
                                     <span>Subtotal</span>
+                                    <span>Rs. {cartSubtotal.toFixed(2)}</span>
+                                </div>
+                                {cartDiscount > 0 && (
+                                    <div className="flex items-center justify-between text-green-700 font-medium">
+                                        <span>Bundle Offer</span>
+                                        <span>- Rs. {cartDiscount.toFixed(2)}</span>
+                                    </div>
+                                )}
+                                <div className="flex items-center justify-between text-lg font-bold text-sage-900 border-t border-sage-200 pt-2 mt-2">
+                                    <span>Total</span>
                                     <span>Rs. {cartTotal.toFixed(2)}</span>
                                 </div>
                                 <p className="text-xs text-stone-500 text-center">

@@ -98,11 +98,18 @@ export const CartProvider = ({ children }) => {
     };
 
     const cartSubtotal = cartItems.reduce((total, item) => total + item.price * item.quantity, 0);
+    const cartDiscount = cartItems.reduce((total, item) => total + (item.bundle_discount || 0) * item.quantity, 0);
+
     const cartTax = cartItems.reduce((total, item) => {
         const gstRate = item.gst_rate || 0;
-        return total + (item.price * (gstRate / 100)) * item.quantity;
+        // Tax is usually on discounted price, but let's keep it simple or strictly on base price? 
+        // User asked for "subtotal less bundle offer". Tax usually applies to final price.
+        // Let's assume tax is on the price AFTER discount.
+        const effectivePrice = Math.max(0, item.price - (item.bundle_discount || 0));
+        return total + (effectivePrice * (gstRate / 100)) * item.quantity;
     }, 0);
-    const cartTotal = cartSubtotal + cartTax;
+
+    const cartTotal = cartSubtotal - cartDiscount + cartTax;
     const cartCount = cartItems.reduce((count, item) => count + item.quantity, 0);
 
     return (
@@ -115,7 +122,8 @@ export const CartProvider = ({ children }) => {
             isCartOpen,
             setIsCartOpen,
             toggleCart,
-            cartSubtotal, // Base Price Total
+            cartSubtotal, // Gross Total
+            cartDiscount, // Total Discounts
             cartTax,      // Total GST
             cartTotal,    // Grand Total (Inclusive)
             cartCount

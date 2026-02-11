@@ -11,7 +11,7 @@ import { getSetting, getWarehouses } from '../lib/data';
 import { calculateShippingCost, calculateDistance } from '../lib/shippingUtils';
 
 const Checkout = () => {
-    const { cartItems, cartSubtotal, cartTax, cartTotal, clearCart } = useCart();
+    const { cartItems, cartSubtotal, cartTax, cartTotal, clearCart, cartDiscount } = useCart();
 
     const navigate = useNavigate();
     const [step, setStep] = useState(1);
@@ -688,11 +688,25 @@ const Checkout = () => {
                     <div className="lg:col-span-1">
                         <div className="bg-sage-50 p-6 rounded-xl border border-sage-100 sticky top-24">
                             <h3 className="font-bold text-sage-900 mb-4 text-lg">Order Summary</h3>
+
+                            {/* Savings Highlight */}
+                            {cartDiscount > 0 && (
+                                <div className="bg-green-100 text-green-800 text-sm font-bold p-3 rounded-lg mb-4 text-center border border-green-200 animate-pulse">
+                                    🎉 You Saved Rs. {cartDiscount.toFixed(2)} on this order!
+                                </div>
+                            )}
+
                             <div className="space-y-3 pb-4 border-b border-sage-200 text-sm">
                                 <div className="flex justify-between text-stone-600">
-                                    <span>Subtotal (Excl. Tax)</span>
+                                    <span>Subtotal</span>
                                     <span>Rs. {cartSubtotal.toFixed(2)}</span>
                                 </div>
+                                {cartDiscount > 0 && (
+                                    <div className="flex justify-between text-green-700 font-medium">
+                                        <span>Bundle Offer</span>
+                                        <span>- Rs. {cartDiscount.toFixed(2)}</span>
+                                    </div>
+                                )}
                                 <div className="flex justify-between text-stone-600">
                                     <span>Shipping</span>
                                     {shippingCostData ? (
@@ -702,7 +716,7 @@ const Checkout = () => {
                                     )}
                                 </div>
                                 <div className="flex justify-between text-stone-600">
-                                    <span>Total GST</span>
+                                    <span>Total Taxes (GST)</span>
                                     <span>Rs. {cartTax.toFixed(2)}</span>
                                 </div>
                             </div>
