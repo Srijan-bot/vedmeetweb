@@ -1,0 +1,766 @@
+import React, { useEffect, useState } from 'react';
+import { useAuth } from '../context/AuthContext';
+import { supabase } from '../lib/supabase';
+import { useNavigate, Link } from 'react-router-dom';
+import Button from '../components/Button';
+import { User, MapPin, Package, FileText, Settings, LogOut, CheckCircle, Clock, AlertCircle, ShoppingCart, ChevronRight, Calendar, XCircle } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { usePrescriptions } from '../hooks/usePrescriptions';
+import { useCart } from '../context/CartContext';
+import PrescriptionUpload from '../components/PrescriptionUpload';
+import { getUserOrders, getUserAppointments } from '../lib/data';
+import LocationPicker from '../components/LocationPicker';
+
+const UserProfile = () => {
+    const { user, profile, loading: authLoading, signOut } = useAuth();
+    const navigate = useNavigate();
+    const [activeTab, setActiveTab] = useState('orders');
+
+    useEffect(() => {
+        if (!authLoading && !user) navigate('/login');
+    }, [user, authLoading, navigate]);
+
+    if (authLoading) return <div className="min-h-screen pt-20 text-center">Loading...</div>;
+
+    const tabs = [
+        { id: 'orders', label: 'Order History', icon: Package },
+        { id: 'prescriptions', label: 'Prescriptions', icon: FileText },
+        { id: 'appointments', label: 'Appointments', icon: Calendar },
+        { id: 'addresses', label: 'Saved Addresses', icon: MapPin },
+        { id: 'profile', label: 'Profile Settings', icon: User },
+    ];
+
+    return (
+        <div className="min-h-screen bg-[#FAFAF9] pt-8 pb-20">
+            <div className="container mx-auto px-4 md:px-6">
+                <div className="flex flex-col md:flex-row gap-8">
+                    {/* Sidebar / Tabs Navigation */}
+                    <div className="w-full md:w-64 flex-shrink-0 space-y-4 md:space-y-2">
+                        {/* User Info Card */}
+                        <div className="bg-white p-4 md:p-6 rounded-2xl shadow-sm border border-sage-100 text-center flex items-center md:block gap-4">
+                            <div className="w-16 h-16 md:w-20 md:h-20 bg-sage-100 rounded-full flex-shrink-0 flex items-center justify-center text-sage-600 text-xl md:text-2xl font-bold border border-sage-200 mx-auto md:mx-auto">
+                                {profile?.full_name?.[0] || user?.email?.[0]?.toUpperCase()}
+                            </div>
+                            <div className="text-left md:text-center overflow-hidden">
+                                <h2 className="font-serif font-bold text-sage-900 truncate text-lg">{profile?.full_name || 'User'}</h2>
+                                <p className="text-xs text-stone-500 truncate">{user?.email}</p>
+                            </div>
+                        </div>
+
+                        {/* Navigation Menu */}
+                        <nav className="bg-white rounded-2xl shadow-sm border border-sage-100 overflow-x-auto md:overflow-hidden flex md:flex-col scrollbar-hide snap-x">
+                            {tabs.map((tab) => (
+                                <button
+                                    key={tab.id}
+                                    onClick={() => setActiveTab(tab.id)}
+                                    className={`flex-shrink-0 snap-start flex items-center gap-2 md:gap-3 px-4 py-3 md:px-6 md:py-4 text-sm font-medium transition-colors whitespace-nowrap
+                                        ${activeTab === tab.id
+                                            ? 'border-b-2 md:border-b-0 md:border-l-4 border-saffron-500 bg-sage-50 text-sage-900'
+                                            : 'border-b-2 md:border-b-0 md:border-l-4 border-transparent text-stone-500 hover:bg-stone-50 hover:text-sage-700'
+                                        }`}
+                                >
+                                    <tab.icon className={`w-4 h-4 md:w-5 md:h-5 ${activeTab === tab.id ? 'text-saffron-600' : 'text-stone-400'}`} />
+                                    {tab.label}
+                                </button>
+                            ))}
+                            <button
+                                onClick={signOut}
+                                className="flex-shrink-0 snap-start flex items-center gap-2 md:gap-3 px-4 py-3 md:px-6 md:py-4 text-sm font-medium text-red-500 hover:bg-red-50 transition-colors whitespace-nowrap md:border-l-4 md:border-transparent"
+                            >
+                                <LogOut className="w-4 h-4 md:w-5 md:h-5" />
+                                <span className="hidden md:inline">Sign Out</span>
+                                <span className="md:hidden">Logout</span>
+                            </button>
+                        </nav>
+                    </div>
+
+                    {/* Content Area */}
+                    <div className="flex-1 min-h-[500px]">
+                        <AnimatePresence mode="wait">
+                            <motion.div
+                                key={activeTab}
+                                initial={{ opacity: 0, x: 20 }}
+                                animate={{ opacity: 1, x: 0 }}
+                                exit={{ opacity: 0, x: -20 }}
+                                transition={{ duration: 0.2 }}
+                            >
+                                {activeTab === 'profile' && <ProfileTab user={user} profile={profile} />}
+                                {activeTab === 'addresses' && <AddressesTab />}
+                                {activeTab === 'orders' && <OrdersTab userId={user?.id} />}
+                                {activeTab === 'appointments' && <AppointmentsTab userId={user?.id} />}
+                                {activeTab === 'prescriptions' && <PrescriptionsTab userId={user?.id} />}
+                            </motion.div>
+                        </AnimatePresence>
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
+};
+
+const ProfileTab = ({ user, profile }) => {
+    // Reusing logic from CompleteProfile roughly, or just display mode
+    const [isEditing, setIsEditing] = useState(false);
+    const [formData, setFormData] = useState({
+        full_name: profile?.full_name || '',
+        phone_number: profile?.phone_number || '',
+        age: profile?.age || '',
+        gender: profile?.gender || '',
+        bio: profile?.bio || ''
+    });
+
+    const handleChange = (e) => setFormData({ ...formData, [e.target.name]: e.target.value });
+
+    const handleSave = async () => {
+        try {
+            const { error } = await supabase.from('profiles').update(formData).eq('id', user.id);
+            if (error) throw error;
+            setIsEditing(false);
+            alert('Profile updated!');
+        } catch (error) {
+            console.error(error);
+            alert('Failed to update profile');
+        }
+    };
+
+    return (
+        <div className="bg-white rounded-3xl p-8 shadow-sm border border-sage-100">
+            <div className="flex justify-between items-center mb-6">
+                <h2 className="text-2xl font-serif font-bold text-sage-900">Personal Information</h2>
+                {!isEditing && <Button variant="outline" size="sm" onClick={() => setIsEditing(true)}>Edit</Button>}
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div>
+                    <label className="block text-xs font-bold uppercase text-stone-500 mb-1">Full Name</label>
+                    <input
+                        type="text"
+                        name="full_name"
+                        disabled={!isEditing}
+                        value={formData.full_name}
+                        onChange={handleChange}
+                        className="w-full p-3 bg-stone-50 border border-stone-200 rounded-lg focus:outline-none focus:border-sage-400 disabled:opacity-70 disabled:cursor-not-allowed"
+                    />
+                </div>
+                <div>
+                    <label className="block text-xs font-bold uppercase text-stone-500 mb-1">Email</label>
+                    <input
+                        type="text"
+                        disabled
+                        value={user?.email}
+                        className="w-full p-3 bg-stone-100 border border-stone-200 rounded-lg text-stone-500 cursor-not-allowed"
+                    />
+                </div>
+                <div>
+                    <label className="block text-xs font-bold uppercase text-stone-500 mb-1">Phone</label>
+                    <input
+                        type="tel"
+                        name="phone_number"
+                        disabled={!isEditing}
+                        value={formData.phone_number}
+                        onChange={handleChange}
+                        className="w-full p-3 bg-stone-50 border border-stone-200 rounded-lg focus:outline-none focus:border-sage-400 disabled:opacity-70"
+                    />
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                    <div>
+                        <label className="block text-xs font-bold uppercase text-stone-500 mb-1">Age</label>
+                        <input
+                            type="number"
+                            name="age"
+                            disabled={!isEditing}
+                            value={formData.age}
+                            onChange={handleChange}
+                            className="w-full p-3 bg-stone-50 border border-stone-200 rounded-lg focus:outline-none focus:border-sage-400 disabled:opacity-70"
+                        />
+                    </div>
+                    <div>
+                        <label className="block text-xs font-bold uppercase text-stone-500 mb-1">Gender</label>
+                        <select
+                            name="gender"
+                            disabled={!isEditing}
+                            value={formData.gender}
+                            onChange={handleChange}
+                            className="w-full p-3 bg-stone-50 border border-stone-200 rounded-lg focus:outline-none focus:border-sage-400 disabled:opacity-70"
+                        >
+                            <option value="">Select</option>
+                            <option value="male">Male</option>
+                            <option value="female">Female</option>
+                            <option value="other">Other</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+
+            {isEditing && (
+                <div className="mt-8 flex justify-end gap-3">
+                    <Button variant="ghost" onClick={() => setIsEditing(false)}>Cancel</Button>
+                    <Button onClick={handleSave}>Save Changes</Button>
+                </div>
+            )}
+        </div>
+    );
+};
+
+const AddressesTab = () => {
+    const { user } = useAuth();
+    const [addresses, setAddresses] = useState([]);
+    const [loading, setLoading] = useState(true);
+    const [view, setView] = useState('list'); // list | picker | details
+    const [draftAddress, setDraftAddress] = useState(null);
+    const [saving, setSaving] = useState(false);
+
+    const fetchAddresses = async () => {
+        if (!user) return;
+        const { data, error } = await supabase
+            .from('user_addresses')
+            .select('*')
+            .order('is_default', { ascending: false })
+            .order('created_at', { ascending: false });
+
+        if (error) console.error('Error fetching addresses:', error);
+        else setAddresses(data || []);
+        setLoading(false);
+    };
+
+    useEffect(() => {
+        fetchAddresses();
+    }, [user]);
+
+    const handleLocationSelect = (addressData) => {
+        setDraftAddress({
+            ...addressData,
+            house_no: '',
+            landmark: '',
+            label: 'Home' // Default label
+        });
+        setView('details');
+    };
+
+    const handleFinalSave = async (e) => {
+        e.preventDefault();
+        setSaving(true);
+        try {
+            // Construct full address string
+            const fullAddr = `${draftAddress.house_no ? draftAddress.house_no + ', ' : ''}${draftAddress.street}, ${draftAddress.landmark ? 'Near ' + draftAddress.landmark + ', ' : ''}${draftAddress.city}, ${draftAddress.state} - ${draftAddress.zip_code}`;
+
+            const { error } = await supabase.from('user_addresses').insert({
+                user_id: user.id,
+                full_address: fullAddr,
+                street: draftAddress.street,
+                city: draftAddress.city,
+                state: draftAddress.state,
+                country: draftAddress.country,
+                zip_code: draftAddress.zip_code,
+                coordinates: draftAddress.coordinates ? `(${draftAddress.coordinates.join(',')})` : null,
+                is_default: addresses.length === 0,
+                label: draftAddress.label
+            });
+
+            if (error) throw error;
+            await fetchAddresses();
+            setView('list');
+            setDraftAddress(null);
+        } catch (error) {
+            console.error('Error saving address:', error);
+            alert('Failed to save address.');
+        } finally {
+            setSaving(false);
+        }
+    };
+
+    const handleDelete = async (id) => {
+        if (!confirm('Are you sure you want to delete this address?')) return;
+        try {
+            const { error } = await supabase.from('user_addresses').delete().eq('id', id);
+            if (error) throw error;
+            setAddresses(prev => prev.filter(a => a.id !== id));
+        } catch (error) {
+            console.error('Error deleting address:', error);
+        }
+    };
+
+    const handleSetDefault = async (id) => {
+        try {
+            // Optimistic update
+            setAddresses(prev => prev.map(a => ({ ...a, is_default: a.id === id })));
+
+            // Supabase update (trigger handles setting others to false)
+            const { error } = await supabase.from('user_addresses').update({ is_default: true }).eq('id', id);
+            if (error) throw error;
+            await fetchAddresses(); // Refresh to be sure
+        } catch (error) {
+            console.error('Error setting default:', error);
+            alert('Failed to update default address.');
+        }
+    };
+
+    if (view === 'picker') {
+        return (
+            <div className="flex flex-col items-center justify-center min-h-[400px]">
+                <LocationPicker
+                    onSelectAddress={handleLocationSelect}
+                    onCancel={() => setView('list')}
+                />
+            </div>
+        );
+    }
+
+    if (view === 'details' && draftAddress) {
+        return (
+            <div className="bg-white rounded-3xl p-8 shadow-sm border border-sage-100 max-w-2xl mx-auto">
+                <div className="flex justify-between items-center mb-6 border-b border-sage-100 pb-4">
+                    <h3 className="font-serif font-bold text-xl text-sage-900">Confirm Address Details</h3>
+                    <Button variant="ghost" onClick={() => setView('picker')}>Back to Map</Button>
+                </div>
+
+                <form onSubmit={handleFinalSave} className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="md:col-span-2">
+                        <label className="block text-xs font-bold uppercase text-stone-500 mb-1">Detailed Location (From Map)</label>
+                        <p className="text-sm text-stone-700 bg-stone-50 p-3 rounded-lg border border-stone-200">
+                            {draftAddress.full_address}
+                        </p>
+                    </div>
+
+                    <div className="md:col-span-2">
+                        <label className="block text-xs font-bold uppercase text-stone-500 mb-1">Flat / House No / Building <span className="text-red-500">*</span></label>
+                        <input
+                            type="text"
+                            required
+                            value={draftAddress.house_no}
+                            onChange={e => setDraftAddress({ ...draftAddress, house_no: e.target.value })}
+                            placeholder="e.g. Flat 402, Sunshine Apartments"
+                            className="w-full p-3 bg-white border border-sage-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-sage-400"
+                        />
+                    </div>
+
+                    <div className="md:col-span-2">
+                        <label className="block text-xs font-bold uppercase text-stone-500 mb-1">Landmark (Optional)</label>
+                        <input
+                            type="text"
+                            value={draftAddress.landmark}
+                            onChange={e => setDraftAddress({ ...draftAddress, landmark: e.target.value })}
+                            placeholder="e.g. Near City Hospital"
+                            className="w-full p-3 bg-white border border-sage-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-sage-400"
+                        />
+                    </div>
+
+                    <div>
+                        <label className="block text-xs font-bold uppercase text-stone-500 mb-1">Street / Area</label>
+                        <input
+                            type="text"
+                            required
+                            value={draftAddress.street}
+                            onChange={e => setDraftAddress({ ...draftAddress, street: e.target.value })}
+                            className="w-full p-3 bg-white border border-sage-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-sage-400"
+                        />
+                    </div>
+
+                    <div>
+                        <label className="block text-xs font-bold uppercase text-stone-500 mb-1">City</label>
+                        <input
+                            type="text"
+                            required
+                            value={draftAddress.city}
+                            onChange={e => setDraftAddress({ ...draftAddress, city: e.target.value })}
+                            className="w-full p-3 bg-white border border-sage-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-sage-400"
+                        />
+                    </div>
+
+                    <div>
+                        <label className="block text-xs font-bold uppercase text-stone-500 mb-1">State</label>
+                        <input
+                            type="text"
+                            required
+                            value={draftAddress.state}
+                            onChange={e => setDraftAddress({ ...draftAddress, state: e.target.value })}
+                            className="w-full p-3 bg-white border border-sage-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-sage-400"
+                        />
+                    </div>
+
+                    <div>
+                        <label className="block text-xs font-bold uppercase text-stone-500 mb-1">Pincode</label>
+                        <input
+                            type="text"
+                            required
+                            value={draftAddress.zip_code}
+                            onChange={e => setDraftAddress({ ...draftAddress, zip_code: e.target.value })}
+                            className="w-full p-3 bg-white border border-sage-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-sage-400"
+                        />
+                    </div>
+
+                    <div className="md:col-span-2">
+                        <label className="block text-xs font-bold uppercase text-stone-500 mb-1">Address Label</label>
+                        <div className="flex gap-3">
+                            {['Home', 'Work', 'Other'].map(label => (
+                                <button
+                                    key={label}
+                                    type="button"
+                                    onClick={() => setDraftAddress({ ...draftAddress, label })}
+                                    className={`px-4 py-2 rounded-lg text-sm font-medium border ${draftAddress.label === label
+                                        ? 'bg-sage-900 text-white border-sage-900'
+                                        : 'bg-white text-stone-600 border-sage-200 hover:bg-sage-50'
+                                        }`}
+                                >
+                                    {label}
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+
+                    <div className="md:col-span-2 flex justify-end gap-3 mt-4 pt-4 border-t border-sage-100">
+                        <Button variant="ghost" onClick={() => setView('list')}>Cancel</Button>
+                        <Button type="submit" disabled={saving}>
+                            {saving ? 'Saving Address...' : 'Save Complete Address'}
+                        </Button>
+                    </div>
+                </form>
+            </div>
+        );
+    }
+
+    if (loading) return <div className="text-center py-10">Loading addresses...</div>;
+
+    if (addresses.length === 0) {
+        return (
+            <div className="bg-white rounded-3xl p-8 shadow-sm border border-sage-100 min-h-[300px] flex items-center justify-center text-center">
+                <div className="text-center">
+                    <MapPin className="w-12 h-12 text-sage-200 mx-auto mb-4" />
+                    <h3 className="text-lg font-bold text-sage-900">No Saved Addresses</h3>
+                    <p className="text-stone-500 mb-6">You haven't added any addresses yet.</p>
+                    <Button variant="outline" onClick={() => setView('picker')}>Add New Address</Button>
+                </div>
+            </div>
+        );
+    }
+
+    return (
+        <div className="space-y-6">
+            <div className="flex justify-between items-center">
+                <h3 className="font-serif font-bold text-xl text-sage-900">My Addresses</h3>
+                <Button size="sm" onClick={() => setView('picker')}>+ Add New</Button>
+            </div>
+
+            <div className="grid gap-4">
+                {addresses.map((addr) => (
+                    <div key={addr.id} className={`bg-white p-6 rounded-2xl border ${addr.is_default ? 'border-saffron-400 ring-1 ring-saffron-400' : 'border-sage-100'} flex justify-between items-start group`}>
+                        <div>
+                            {addr.is_default && (
+                                <span className="inline-block px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-saffron-100 text-saffron-800 mb-2">
+                                    Default
+                                </span>
+                            )}
+                            <p className="font-bold text-sage-900">{addr.label || 'Address'}</p>
+                            <p className="text-stone-600 mt-1 max-w-md">{addr.full_address}</p>
+                            <p className="text-stone-400 text-sm mt-1">
+                                {addr.city}, {addr.state} {addr.zip_code}
+                            </p>
+                        </div>
+                        <div className="flex flex-col gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                            {!addr.is_default && (
+                                <Button variant="ghost" size="sm" onClick={() => handleSetDefault(addr.id)} className="text-xs">
+                                    Set as Default
+                                </Button>
+                            )}
+                            <Button variant="ghost" size="sm" onClick={() => handleDelete(addr.id)} className="text-red-500 hover:text-red-600 hover:bg-red-50">
+                                <LogOut className="w-4 h-4" /> {/* Using LogOut icon as delete for now, or import Trash */}
+                            </Button>
+                        </div>
+                    </div>
+                ))}
+            </div>
+        </div>
+    );
+};
+
+const OrdersTab = ({ userId }) => {
+    const [orders, setOrders] = useState([]);
+    const [loading, setLoading] = useState(true);
+
+    useEffect(() => {
+        const fetchOrders = async () => {
+            if (userId) {
+                const data = await getUserOrders(userId);
+                setOrders(data || []);
+            }
+            setLoading(false);
+        };
+        fetchOrders();
+    }, [userId]);
+
+    if (loading) return <div className="text-center py-10">Loading orders...</div>;
+
+    if (orders.length === 0) {
+        return (
+            <div className="bg-white rounded-3xl p-8 shadow-sm border border-sage-100 min-h-[300px] flex items-center justify-center text-center">
+                <div>
+                    <Package className="w-12 h-12 text-sage-200 mx-auto mb-4" />
+                    <h3 className="text-lg font-bold text-sage-900">No Orders Yet</h3>
+                    <p className="text-stone-500 mb-6">Start shopping to see your orders here.</p>
+                    <Link to="/shop"><Button>Browse Shop</Button></Link>
+                </div>
+            </div>
+        );
+    }
+
+    return (
+        <div className="space-y-4">
+            {orders.map((order) => (
+                <div key={order.id} className="bg-white rounded-2xl p-6 shadow-sm border border-sage-100">
+                    <div className="flex justify-between items-start mb-4 border-b border-sage-50 pb-4">
+                        <div>
+                            <p className="text-xs text-stone-400 font-bold uppercase tracking-wider mb-1">
+                                {new Date(order.created_at).toLocaleDateString()}
+                            </p>
+                            <h3 className="font-bold text-sage-900">Order #{order.id.slice(0, 8)}</h3>
+                        </div>
+                        <div className="text-right">
+                            <span className="inline-block px-3 py-1 rounded-full text-xs font-bold uppercase bg-green-100 text-green-800">
+                                {order.status || 'Processing'}
+                            </span>
+                            <p className="font-bold text-sage-900 mt-1">Rs. {Number(order.total_amount).toFixed(2)}</p>
+                            <Link to={`/order/${order.id}`} className="block mt-2 text-xs text-saffron-600 font-bold hover:underline">
+                                View Details &rarr;
+                            </Link>
+                        </div>
+                    </div>
+                    {/* Simplified Item List */}
+                    <div className="space-y-2">
+                        {order.items?.map((item, idx) => (
+                            <div key={idx} className="flex items-center gap-3 text-sm text-stone-600">
+                                <div className="w-8 h-8 bg-stone-100 rounded overflow-hidden shrink-0">
+                                    <img src={item.product?.image} className="w-full h-full object-cover" alt="" />
+                                </div>
+                                <span className="flex-1 truncate">{item.product?.name}</span>
+                                <span className="text-stone-400">x{item.quantity}</span>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            ))}
+        </div>
+    );
+};
+
+const AppointmentsTab = ({ userId }) => {
+    const [appointments, setAppointments] = useState([]);
+    const [loading, setLoading] = useState(true);
+
+    useEffect(() => {
+        const fetchAppointments = async () => {
+            if (userId) {
+                const data = await getUserAppointments(userId);
+                setAppointments(data || []);
+            }
+            setLoading(false);
+        };
+        fetchAppointments();
+    }, [userId]);
+
+    if (loading) return <div className="text-center py-10">Loading appointments...</div>;
+
+    if (appointments.length === 0) {
+        return (
+            <div className="bg-white rounded-3xl p-8 shadow-sm border border-sage-100 min-h-[300px] flex items-center justify-center text-center">
+                <div>
+                    <Calendar className="w-12 h-12 text-sage-200 mx-auto mb-4" />
+                    <h3 className="text-lg font-bold text-sage-900">No Appointments</h3>
+                    <p className="text-stone-500 mb-6">Book a consultation with our ayurvedic experts.</p>
+                    <Link to="/book-appointment"><Button>Book Appointment</Button></Link>
+                </div>
+            </div>
+        );
+    }
+
+    return (
+        <div className="space-y-4">
+            {appointments.map((apt) => (
+                <div key={apt.id} className="bg-white rounded-2xl p-6 shadow-sm border border-sage-100 flex flex-col md:flex-row gap-6">
+                    <div className="w-full md:w-24 h-24 bg-sage-50 rounded-xl overflow-hidden shrink-0">
+                        {apt.doctors?.image ? (
+                            <img src={apt.doctors.image} alt={apt.doctors.name} className="w-full h-full object-cover" />
+                        ) : (
+                            <User className="w-full h-full p-6 text-sage-300" />
+                        )}
+                    </div>
+                    <div className="flex-1">
+                        <div className="flex justify-between items-start mb-2">
+                            <div>
+                                <h3 className="font-bold text-lg text-sage-900">{apt.doctors?.name || 'Doctor'}</h3>
+                                <p className="text-sm text-stone-500">{apt.doctors?.specialty}</p>
+                            </div>
+                            <div className={`px-3 py-1 rounded-full text-xs font-bold uppercase ${apt.status === 'confirmed' ? 'bg-green-100 text-green-800' :
+                                apt.status === 'completed' ? 'bg-blue-100 text-blue-800' :
+                                    'bg-stone-100 text-stone-600'
+                                }`}>
+                                {apt.status}
+                            </div>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-4 mt-4 text-sm">
+                            <div className="flex items-center gap-2 text-stone-600">
+                                <Calendar className="w-4 h-4 text-saffron-500" />
+                                {apt.appointment_date}
+                            </div>
+                            <div className="flex items-center gap-2 text-stone-600">
+                                <Clock className="w-4 h-4 text-saffron-500" />
+                                {apt.appointment_time}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            ))}
+        </div>
+    );
+};
+
+const PrescriptionsTab = ({ userId }) => {
+    const { getUserPrescriptions, loading } = usePrescriptions();
+    const [prescriptions, setPrescriptions] = useState([]);
+    const [subTab, setSubTab] = useState('ongoing'); // ongoing | history
+    const [isUploadOpen, setIsUploadOpen] = useState(false);
+    const { addToCart } = useCart();
+
+    // Fetch data
+    const refresh = async () => {
+        if (userId) {
+            const data = await getUserPrescriptions(userId);
+            setPrescriptions(data);
+        }
+    };
+
+    useEffect(() => { refresh(); }, [userId]);
+
+    // Derived state
+    const ongoing = prescriptions.filter(p => p.status === 'pending' || p.status === 'referred');
+    const history = prescriptions.filter(p => p.status === 'rejected' || p.status === 'completed');
+
+    const currentList = subTab === 'ongoing' ? ongoing : history;
+
+    return (
+        <div className="space-y-6">
+            <div className="flex justify-between items-center">
+                <div className="flex bg-white rounded-lg p-1 border border-sage-100">
+                    <button
+                        onClick={() => setSubTab('ongoing')}
+                        className={`px-4 py-2 text-sm font-medium rounded-md transition-colors ${subTab === 'ongoing' ? 'bg-sage-100 text-sage-900' : 'text-stone-500 hover:text-sage-700'}`}
+                    >
+                        Ongoing ({ongoing.length})
+                    </button>
+                    <button
+                        onClick={() => setSubTab('history')}
+                        className={`px-4 py-2 text-sm font-medium rounded-md transition-colors ${subTab === 'history' ? 'bg-sage-100 text-sage-900' : 'text-stone-500 hover:text-sage-700'}`}
+                    >
+                        History ({history.length})
+                    </button>
+                </div>
+                <Button size="sm" onClick={() => setIsUploadOpen(true)}>New Upload</Button>
+            </div>
+
+            <div className="space-y-4">
+                {currentList.length === 0 ? (
+                    <div className="bg-white rounded-2xl p-8 text-center border border-sage-100">
+                        <p className="text-stone-500">No {subTab} prescriptions found.</p>
+                    </div>
+                ) : (
+                    currentList.map(p => (
+                        <PrescriptionCard key={p.id} prescription={p} addToCart={addToCart} />
+                    ))
+                )}
+            </div>
+
+            <PrescriptionUpload
+                isOpen={isUploadOpen}
+                onClose={() => setIsUploadOpen(false)}
+                onUploadComplete={refresh}
+            />
+        </div>
+    );
+};
+
+const PrescriptionCard = ({ prescription, addToCart }) => {
+    const isReferred = prescription.status === 'referred';
+    const items = prescription.items || [];
+    const navigate = useNavigate();
+
+    const handleAddAll = (e) => {
+        e.stopPropagation();
+        e.preventDefault();
+        items.forEach(item => {
+            if (item.product) addToCart(item.product);
+        });
+        alert(`Added ${items.length} medicines to cart`);
+    };
+
+    return (
+        <div className="bg-white rounded-2xl p-6 shadow-sm border border-sage-100 hover:shadow-md transition-shadow">
+            <div className="flex flex-col md:flex-row gap-6">
+                {/* Image Thumbnail */}
+                <div className="w-full md:w-32 h-32 bg-stone-100 rounded-xl overflow-hidden flex-shrink-0 cursor-pointer" onClick={() => navigate(`/prescriptions/${prescription.id}`)}>
+                    {prescription.image_path ? (
+                        <img src={prescription.signedImageUrl} alt="Prescription" className="w-full h-full object-cover" />
+                    ) : (
+                        <div className="w-full h-full flex items-center justify-center text-stone-400">
+                            <FileText />
+                        </div>
+                    )}
+                </div>
+
+                <div className="flex-1">
+                    <div className="flex justify-between items-start mb-2">
+                        <div>
+                            <p className="text-xs text-stone-400 font-bold uppercase tracking-wider mb-1">
+                                {new Date(prescription.created_at).toLocaleDateString()}
+                            </p>
+                            <h3 className="font-serif font-bold text-lg text-sage-900">
+                                Prescription #{prescription.id.slice(0, 8)}
+                            </h3>
+                        </div>
+                        <div className={`px-3 py-1 rounded-full text-xs font-bold uppercase ${prescription.status === 'pending' ? 'bg-yellow-100 text-yellow-800' :
+                            prescription.status === 'referred' ? 'bg-green-100 text-green-800' : 'bg-stone-100 text-stone-600'
+                            }`}>
+                            {prescription.status}
+                        </div>
+                    </div>
+
+                    {/* Referred Content */}
+                    {isReferred && items.length > 0 && (
+                        <div className="mt-4 bg-sage-50 rounded-xl p-4 border border-sage-100">
+                            <p className="text-xs font-bold text-sage-700 uppercase mb-2 flex items-center gap-2">
+                                <CheckCircle className="w-3 h-3" /> Doctor Recommended Medicines
+                            </p>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-3">
+                                {items.slice(0, 4).map((item, idx) => (
+                                    <div key={idx} className="flex items-center gap-2 text-sm text-stone-600">
+                                        <div className="w-1 h-1 rounded-full bg-saffron-400"></div>
+                                        {item.product?.name || 'Unknown Product'}
+                                    </div>
+                                ))}
+                                {items.length > 4 && <div className="text-xs text-stone-400 pl-3">+{items.length - 4} more</div>}
+                            </div>
+
+                            <div className="flex gap-3">
+                                <Button size="sm" onClick={handleAddAll} className="flex-1 bg-sage-900 text-white">
+                                    Add All to Cart <ShoppingCart className="w-3 h-3 ml-2" />
+                                </Button>
+                                <Button size="sm" variant="outline" onClick={() => navigate(`/prescriptions/${prescription.id}`)}>
+                                    Need Help?
+                                </Button>
+                            </div>
+                        </div>
+                    )}
+
+                    {!isReferred && (
+                        <div className="mt-4 flex gap-3">
+                            <Button size="sm" variant="outline" onClick={() => navigate(`/prescriptions/${prescription.id}`)}>
+                                View Details <ChevronRight className="w-3 h-3 ml-1" />
+                            </Button>
+                        </div>
+                    )}
+                </div>
+            </div>
+        </div>
+    );
+};
+
+export default UserProfile;
