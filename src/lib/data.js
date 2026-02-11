@@ -165,6 +165,76 @@ export const deleteProduct = async (id) => {
     if (error) throw error;
 };
 
+export const syncAllProductOffers = async () => {
+    // 1. Fetch all products and their variants
+    const { data: products, error } = await supabase
+        .from('products')
+        .select('id, price, product_variants(id, price, discount_percentage, disc_price)');
+
+    if (error) {
+        console.error("Error fetching for sync:", error);
+        return { success: false, error };
+    }
+
+    let updatedCount = 0;
+
+    // 2. Iterate and Update
+    for (const p of products) {
+        if (!p.product_variants || p.product_variants.length === 0) continue;
+
+        // Find max discount among variants
+        const maxDiscountVariant = p.product_variants.reduce((prev, current) => {
+            return (prev.discount_percentage || 0) > (current.discount_percentage || 0) ? prev : current;
+        }, { discount_percentage: 0 });
+
+        const newDiscount = maxDiscountVariant.discount_percentage || 0;
+
+        // Calculate expected disc_price for product based on ITS OWN price
+        const price = parseFloat(p.price || 0);
+        let newDiscPrice = null;
+
+        if (newDiscount > 0) {
+            newDiscPrice = price - (price * (newDiscount / 100));
+            newDiscPrice = Math.max(0, Math.round(newDiscPrice * 100) / 100);
+        }
+
+        // Update if different
+        // We assume product needs update if current discount doesn't match calculated
+        // Or just force update to be safe
+        await supabase.from('products').update({
+            discount_percentage: newDiscount,
+            disc_price: newDiscPrice
+        }).eq('id', p.id);
+
+        updatedCount++;
+    }
+
+    return { success: true, count: updatedCount };
+};
+
+// --- BUNDLES / COMBOS ---
+
+export const getBundles = async () => {
+    const { data, error } = await supabase.from('bundles').select('*').order('created_at', { ascending: false });
+    if (error) {
+        console.error("Error fetching bundles:", error);
+        return [];
+    }
+    return data;
+};
+
+export const createBundle = async (bundleData) => {
+    // bundleData matches the schema: name, description, price, original_price, components, image (optional)
+    const { data, error } = await supabase.from('bundles').insert([bundleData]).select();
+    if (error) throw error;
+    return data;
+};
+
+export const deleteBundle = async (id) => {
+    const { error } = await supabase.from('bundles').delete().eq('id', id);
+    if (error) throw error;
+};
+
 export const applyOffer = async (productIds, percentage) => {
     // 1. Fetch current products to calculate new prices (Supabase doesn't support convenient math updates in one go easily without stored procs for this specific math on multiple rows with different base prices, so fetching is safer/easier for this scale)
     const { data: products } = await supabase.from('products').select('id, price').in('id', productIds);
@@ -198,26 +268,67 @@ export const removeOffer = async (productIds) => {
 };
 
 export const applyVariantOffer = async (variantIds, percentage) => {
-    const { data: variants } = await supabase.from('product_variants').select('id, price').in('id', variantIds);
+    const { data: variants } = await supabase.from('product_variants').select('id, price, product_id').in('id', variantIds);
 
     if (!variants) return;
 
+    // 1. Update Variants
     for (const v of variants) {
         const price = parseFloat(v.price || 0);
-        const disc_price = price - (price * (percentage / 100));
+        let disc_price = price - (price * (percentage / 100));
 
-        await supabase.from('product_variants').update({
+        // Ensure disc_price is valid and rounded
+        disc_price = Math.max(0, Math.round(disc_price * 100) / 100);
+
+        const { error } = await supabase.from('product_variants').update({
             discount_percentage: percentage,
             disc_price: disc_price
         }).eq('id', v.id);
+
+        if (error) {
+            console.error(`Error updating variant ${v.id}:`, error);
+        }
+    }
+
+    // 2. Sync to Parent Products 
+    // (Take the maximum discount if multiple variants have offers, or just the last applied for simplicity in this context)
+    const productIds = [...new Set(variants.map(v => v.product_id))];
+
+    for (const pid of productIds) {
+        // Fetch product price to calculate disc_price
+        const { data: product } = await supabase.from('products').select('price').eq('id', pid).single();
+        if (product) {
+            const price = parseFloat(product.price || 0);
+            let disc_price = price - (price * (percentage / 100));
+            disc_price = Math.max(0, Math.round(disc_price * 100) / 100);
+
+            await supabase.from('products').update({
+                discount_percentage: percentage,
+                disc_price: disc_price
+            }).eq('id', pid);
+        }
     }
 };
 
 export const removeVariantOffer = async (variantIds) => {
+    // 1. Get products impacted
+    const { data: variants } = await supabase.from('product_variants').select('product_id').in('id', variantIds);
+
     await supabase.from('product_variants').update({
         discount_percentage: 0,
         disc_price: null
     }).in('id', variantIds);
+
+    // 2. Clear parent product offer if it matches (Simplification: clearing parent offer if any variant offer is removed might be aggressive, 
+    // but ensures "Active Offers" view is consistent. Better logic: check if ANY other variant still has offer. 
+    // For now, let's assume if you remove offers from variants, you want to clear the product badge too)
+    if (variants) {
+        const productIds = [...new Set(variants.map(v => v.product_id))];
+        await supabase.from('products').update({
+            discount_percentage: 0,
+            disc_price: null
+        }).in('id', productIds);
+    }
 };
 
 // Dangerous: Deletes ALL products and related data

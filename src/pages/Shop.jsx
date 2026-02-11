@@ -16,13 +16,85 @@ const Shop = () => {
   const { addToCart } = useCart();
 
   // Filters
+  // Filters
   const [selectedCategory, setSelectedCategory] = useState(searchParams.get('category') || 'All');
   const [selectedConcern, setSelectedConcern] = useState(searchParams.get('concern') || 'All');
   const [selectedBrand, setSelectedBrand] = useState(searchParams.get('brand') || 'All');
+  const [selectedDosage, setSelectedDosage] = useState('All'); // New Dosage Filter
   const [priceRange, setPriceRange] = useState([0, 10000]);
   const [sortBy, setSortBy] = useState('featured');
   const [showMobileFilters, setShowMobileFilters] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+
+  // Search Enhancements
+  const [suggestions, setSuggestions] = useState([]);
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const [didYouMean, setDidYouMean] = useState(null);
+
+  // Helper: Derive Dosage Form
+  const getDosageForm = (name) => {
+    const lower = name.toLowerCase();
+    if (lower.includes('tablet') || lower.includes('tab')) return 'Tablet';
+    if (lower.includes('syrup')) return 'Syrup';
+    if (lower.includes('oil') || lower.includes('taila')) return 'Oil';
+    if (lower.includes('churna') || lower.includes('powder')) return 'Powder/Churna';
+    if (lower.includes('balm') || lower.includes('gel')) return 'Balm/Gel';
+    if (lower.includes('capsule') || lower.includes('cap')) return 'Capsule';
+    if (lower.includes('tea')) return 'Tea';
+    if (lower.includes('juice')) return 'Juice';
+    if (lower.includes('prash')) return 'Chyawanprash';
+    return 'Other';
+  };
+
+  // Helper: Symptom Mapping (Simple Implementation)
+  const getSymptomConcerns = (query) => {
+    const q = query.toLowerCase();
+    const map = {
+      'burning': 'Digestive Health',
+      'acid': 'Digestive Health',
+      'gas': 'Digestive Health',
+      'stomach': 'Digestive Health',
+      'hair': 'Hair Care',
+      'bald': 'Hair Care',
+      'dandruff': 'Hair Care',
+      'pain': 'Pain Relief',
+      'ache': 'Pain Relief',
+      'joint': 'Pain Relief',
+      'cold': 'Immunity Boosters',
+      'cough': 'Immunity Boosters',
+      'immunity': 'Immunity Boosters',
+      'flu': 'Immunity Boosters',
+      'sugar': 'Diabetes',
+      'diabet': 'Diabetes',
+      'tooth': 'Oral Care',
+      'mouth': 'Oral Care',
+      'gum': 'Oral Care',
+      'skin': 'Dark Spots & Pigmentation', // Assuming category/concern exists or maps to similar
+      'face': 'Dark Spots & Pigmentation',
+      'acne': 'Dark Spots & Pigmentation'
+    };
+
+    // Find all matching concerns
+    const matches = Object.keys(map).filter(key => q.includes(key)).map(key => map[key]);
+    return [...new Set(matches)]; // Unique
+  };
+
+  // Helper: Levenshtein Distance for "Did you mean?"
+  const levenshteinDistance = (a, b) => {
+    const matrix = [];
+    for (let i = 0; i <= b.length; i++) { matrix[i] = [i]; }
+    for (let j = 0; j <= a.length; j++) { matrix[0][j] = j; }
+    for (let i = 1; i <= b.length; i++) {
+      for (let j = 1; j <= a.length; j++) {
+        if (b.charAt(i - 1) == a.charAt(j - 1)) {
+          matrix[i][j] = matrix[i - 1][j - 1];
+        } else {
+          matrix[i][j] = Math.min(matrix[i - 1][j - 1] + 1, Math.min(matrix[i][j - 1] + 1, matrix[i - 1][j] + 1));
+        }
+      }
+    }
+    return matrix[b.length][a.length];
+  };
 
   useEffect(() => {
     const loadData = async () => {
@@ -42,14 +114,26 @@ const Shop = () => {
     loadData();
   }, []);
 
+  // Update Suggestions based on Query
+  useEffect(() => {
+    if (!searchQuery || searchQuery.length < 2) {
+      setSuggestions([]);
+      return;
+    }
+
+    const lowerQuery = searchQuery.toLowerCase();
+    const matched = products.filter(p => p.name.toLowerCase().includes(lowerQuery)).slice(0, 5);
+    setSuggestions(matched);
+  }, [searchQuery, products]);
+
   useEffect(() => {
     let result = [...products];
+    setDidYouMean(null); // Reset
 
     // Filter by Category
     if (selectedCategory !== 'All') {
       result = result.filter(p => {
         const pCats = normalizeToArray(p.category);
-        // Match ID or Name
         return pCats.includes(selectedCategory) ||
           pCats.includes(categories.find(c => c.id === selectedCategory)?.name);
       });
@@ -60,9 +144,7 @@ const Shop = () => {
       const concernName = concerns.find(c => c.id === selectedConcern)?.name || selectedConcern;
       result = result.filter(p => {
         const pCons = normalizeToArray(p.concern);
-        // Match ID or Name
         if (pCons.includes(selectedConcern)) return true;
-        // Fuzzy match names
         return pCons.some(c => c.toLowerCase().includes(concernName.toLowerCase())) ||
           (p.features && p.features.toLowerCase().includes(concernName.toLowerCase())) ||
           (p.description && p.description.toLowerCase().includes(concernName.toLowerCase()));
@@ -73,25 +155,71 @@ const Shop = () => {
     if (selectedBrand !== 'All') {
       const brandName = brands.find(b => b.id === selectedBrand)?.name || selectedBrand;
       result = result.filter(p => {
-        // Match ID or Name (Product brand field might be name or ID)
         if (p.brand === selectedBrand) return true;
         if (p.brand === brandName) return true;
-        // Case insensitive check
         if (typeof p.brand === 'string' && p.brand.toLowerCase() === brandName.toLowerCase()) return true;
         return false;
       });
     }
 
-    // Filter by Search Query (Name & Meta Keywords)
+    // Filter by Dosage Form
+    if (selectedDosage !== 'All') {
+      result = result.filter(p => getDosageForm(p.name) === selectedDosage);
+    }
+
+    // Filter by Search Query
     if (searchQuery.trim()) {
       const query = searchQuery.toLowerCase();
-      result = result.filter(p => {
+      // 1. Direct Match
+      const searchResult = result.filter(p => {
         return (
           p.name.toLowerCase().includes(query) ||
           (p.meta_keywords && p.meta_keywords.toLowerCase().includes(query)) ||
           (p.description && p.description.toLowerCase().includes(query))
         );
       });
+
+      // 2. Symptom Search (Smart Fallback)
+      if (searchResult.length === 0) {
+        const symptomConcerns = getSymptomConcerns(query);
+        if (symptomConcerns.length > 0) {
+          const symptomResult = result.filter(p => {
+            const pCons = normalizeToArray(p.concern).map(c => c.toLowerCase());
+            const pCats = normalizeToArray(p.category).map(c => c.toLowerCase());
+            return symptomConcerns.some(sc => pCons.includes(sc.toLowerCase()) || pCats.includes(sc.toLowerCase()));
+          });
+
+          if (symptomResult.length > 0) {
+            result = symptomResult;
+            // Maybe show a message "Showing results for related concerns..."
+          } else {
+            result = []; // No matches found
+          }
+        } else {
+          result = [];
+        }
+      } else {
+        result = searchResult;
+      }
+
+      // 3. Did You Mean? (If still 0 results)
+      if (result.length === 0) {
+        // Find closest product name
+        let closest = null;
+        let minDist = 3; // Tolerance
+
+        for (const p of products) {
+          const dist = levenshteinDistance(query, p.name.toLowerCase().substring(0, Math.max(query.length, 5)));
+          if (dist < minDist) {
+            minDist = dist;
+            closest = p;
+          }
+        }
+
+        if (closest) {
+          setDidYouMean(closest.name);
+        }
+      }
     }
 
     // Filter by Price
@@ -107,7 +235,7 @@ const Shop = () => {
     }
 
     setFilteredProducts(result);
-  }, [products, selectedCategory, selectedConcern, selectedBrand, priceRange, sortBy, searchQuery, brands]);
+  }, [products, selectedCategory, selectedConcern, selectedBrand, selectedDosage, priceRange, sortBy, searchQuery, brands]);
 
   // Helper to normalize category/concern to array of strings
   const normalizeToArray = (value) => {
@@ -251,6 +379,28 @@ const Shop = () => {
                 </div>
               </div>
 
+              <div>
+                <h3 className="font-serif font-semibold text-lg mb-4 text-sage-900">Dosage Form</h3>
+                <div className="space-y-2">
+                  {['All', 'Tablet', 'Syrup', 'Churna', 'Oil', 'Balm/Gel', 'Capsule', 'Tea', 'Juice', 'Other'].map(dosage => (
+                    <label key={dosage} className="flex items-center gap-2 cursor-pointer group">
+                      <div className={`w-4 h-4 rounded-full border border-sage-300 flex items-center justify-center transition-colors ${String(selectedDosage) === dosage ? 'bg-sage-600 border-sage-600' : 'group-hover:border-sage-500'}`}>
+                        {String(selectedDosage) === dosage && <div className="w-2 h-2 rounded-full bg-white" />}
+                      </div>
+                      <input
+                        type="radio"
+                        name="dosage"
+                        value={dosage}
+                        checked={String(selectedDosage) === dosage}
+                        onChange={() => setSelectedDosage(dosage)}
+                        className="hidden"
+                      />
+                      <span className={`text-sm ${String(selectedDosage) === dosage ? 'text-sage-900 font-medium' : 'text-stone-600'}`}>{dosage}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+
             </div>
 
             {/* Mobile Footer Button */}
@@ -278,9 +428,30 @@ const Shop = () => {
                   placeholder="Search for herbs, kits..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
+                  onFocus={() => setShowSuggestions(true)}
+                  onBlur={() => setTimeout(() => setShowSuggestions(false), 200)}
                   className="w-full pl-10 pr-4 py-3 text-sm border border-stone-200 rounded-xl bg-stone-50 focus:outline-none focus:border-sage-500 focus:bg-white transition-all shadow-sm"
                 />
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-stone-400" />
+
+                {/* Mobile Suggestions */}
+                {showSuggestions && suggestions.length > 0 && (
+                  <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-stone-200 rounded-xl shadow-lg z-50 max-h-60 overflow-y-auto">
+                    {suggestions.map(s => (
+                      <Link
+                        key={s.id}
+                        to={`/product/${s.id}`}
+                        className="flex items-center gap-3 p-3 hover:bg-sage-50 border-b border-stone-50 last:border-0"
+                      >
+                        <img src={s.image} alt="" className="w-8 h-8 rounded object-cover" />
+                        <div>
+                          <div className="text-sm font-medium text-sage-900">{s.name}</div>
+                          <div className="text-[10px] text-stone-500">{s.brand}</div>
+                        </div>
+                      </Link>
+                    ))}
+                  </div>
+                )}
               </div>
 
               {/* Filter & Sort Row */}
@@ -317,9 +488,30 @@ const Shop = () => {
                   placeholder="Search products..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
+                  onFocus={() => setShowSuggestions(true)}
+                  onBlur={() => setTimeout(() => setShowSuggestions(false), 200)}
                   className="pl-4 pr-10 py-2 text-sm text-stone-600 border border-sage-200 rounded-full focus:outline-none focus:border-sage-400 w-full md:w-64"
                 />
                 <Search className="absolute right-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-stone-400 pointer-events-none" />
+
+                {/* Desktop Suggestions */}
+                {showSuggestions && suggestions.length > 0 && (
+                  <div className="absolute top-full right-0 w-80 mt-2 bg-white border border-stone-200 rounded-xl shadow-xl z-50 max-h-80 overflow-y-auto">
+                    {suggestions.map(s => (
+                      <Link
+                        key={s.id}
+                        to={`/product/${s.id}`}
+                        className="flex items-center gap-3 p-3 hover:bg-sage-50 border-b border-stone-50 last:border-0"
+                      >
+                        <img src={s.image} alt="" className="w-10 h-10 rounded object-cover" />
+                        <div>
+                          <div className="text-sm font-medium text-sage-900 line-clamp-1">{s.name}</div>
+                          <div className="text-xs text-stone-500">{s.brand} • <span className="text-saffron-600 font-bold">₹{s.disc_price || s.price}</span></div>
+                        </div>
+                      </Link>
+                    ))}
+                  </div>
+                )}
               </div>
 
               <div className="relative group">
@@ -353,6 +545,18 @@ const Shop = () => {
             </div>
           ) : (
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 md:gap-6 pb-20">
+              {filteredProducts.length === 0 && didYouMean && (
+                <div className="col-span-full mb-4 p-4 bg-saffron-50 border border-saffron-100 rounded-lg flex items-center gap-2">
+                  <span className="text-stone-600">Did you mean:</span>
+                  <button
+                    onClick={() => setSearchQuery(didYouMean)}
+                    className="font-bold text-saffron-700 underline hover:text-saffron-800"
+                  >
+                    {didYouMean}?
+                  </button>
+                </div>
+              )}
+
               {filteredProducts.length > 0 ? (
                 filteredProducts.map((product) => (
                   <div key={product.id} className="bg-white rounded-xl overflow-hidden shadow-sm hover:shadow-lg transition-all duration-300 group flex flex-col border border-stone-100">
@@ -429,7 +633,7 @@ const Shop = () => {
               ) : (
                 <div className="col-span-2 md:col-span-3 lg:col-span-4 text-center py-20">
                   <h3 className="text-xl font-serif text-sage-800 mb-2">No products found</h3>
-                  <button onClick={() => { setSelectedCategory('All'); setSelectedConcern('All'); setSelectedBrand('All'); setSortBy('featured'); setSearchQuery(''); }} className="mt-4 text-saffron-600 underline font-medium">Clear filters</button>
+                  <button onClick={() => { setSelectedCategory('All'); setSelectedConcern('All'); setSelectedBrand('All'); setSelectedDosage('All'); setSortBy('featured'); setSearchQuery(''); }} className="mt-4 text-saffron-600 underline font-medium">Clear filters</button>
                 </div>
               )}
             </div>

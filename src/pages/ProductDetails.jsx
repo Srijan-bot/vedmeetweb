@@ -8,6 +8,7 @@ import { useAuth } from '../context/AuthContext';
 import { motion, AnimatePresence } from 'framer-motion';
 
 import logoShort from '../assets/logo-short.svg';
+import ProductRecommendations from '../components/ProductRecommendations';
 import ReviewModal from '../components/ReviewModal';
 import { supabase } from '../lib/supabase';
 
@@ -693,6 +694,15 @@ const ProductDetails = () => {
                         </AnimatePresence>
                     </div>
                 </div>
+
+                {/* Recommendations */}
+                <ProductRecommendations
+                    title="You May Also Like"
+                    currentProductId={product.id}
+                    category={product.category}
+                    concern={product.concern}
+                    limit={4}
+                />
 
                 {/* Trust Badges Minimal */}
                 <div className="border-t border-sage-200/50 pt-10 pb-20 md:pt-16 md:pb-8">
