@@ -9,21 +9,35 @@ import DealsSection from '../components/DealsSection';
 import ConsultationBanner from '../components/ConsultationBanner';
 import ProductRecommendations from '../components/ProductRecommendations';
 import PageLoader from '../components/PageLoader';
+import PrescriptionCTABanner from '../components/PrescriptionCTABanner';
 
 const Home = () => {
     const [products, setProducts] = useState([]);
     const [loading, setLoading] = useState(true);
+    const [error, setError] = useState(null);
 
     useEffect(() => {
         const loadData = async () => {
             setLoading(true);
+            setError(null);
+
+            // Create a timeout promise
+            const timeoutPromise = new Promise((_, reject) =>
+                setTimeout(() => reject(new Error('Request timeout')), 10000) // 10 second timeout
+            );
+
             try {
-                // Fetch all products for now to distribute among sections
-                // In a real app we would have specific endpoints
-                const allProducts = await getProducts();
+                // Race between data fetch and timeout
+                const allProducts = await Promise.race([
+                    getProducts(),
+                    timeoutPromise
+                ]);
                 setProducts(allProducts || []);
             } catch (error) {
                 console.error("Failed to load home data", error);
+                setError(error.message);
+                // Set empty array to allow page to render with fallback content
+                setProducts([]);
             } finally {
                 setLoading(false);
             }
@@ -46,7 +60,10 @@ const Home = () => {
             {/* 1. Hero Section */}
             <HeroSection />
 
-            {/* 2. Trust Elements (Below Hero) */}
+            {/* 2. Prescription Upload CTA Banner */}
+            <PrescriptionCTABanner />
+
+            {/* 3. Trust Elements (Below Hero) */}
             <TrustElements />
 
             {/* 3. Shop by Health Concern */}

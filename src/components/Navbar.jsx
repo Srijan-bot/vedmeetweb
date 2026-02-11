@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { ShoppingBag, Menu, X, Search, User, FileText, ArrowLeft, MapPin, ChevronDown, Zap, Phone, HelpCircle } from 'lucide-react';
+import { ShoppingBag, Menu, X, Search, User, FileText, ArrowLeft, MapPin, ChevronDown, Zap, Phone, HelpCircle, Camera } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import Button from './Button';
 import { cn } from '../lib/utils';
@@ -164,8 +164,8 @@ const Navbar = () => {
                             </Link>
                         </div>
                         <div className="flex items-center gap-4">
-                            <button onClick={() => setIsUploadOpen(true)}>
-                                <FileText className="w-5 h-5 text-stone-600" />
+                            <button onClick={() => setIsUploadOpen(true)} className="p-1 hover:bg-gray-100 rounded-md transition-colors" title="Upload Prescription">
+                                <Camera className="w-5 h-5 text-saffron-600" />
                             </button>
                             <button onClick={toggleCart} className="relative">
                                 <ShoppingBag className="w-5 h-5 text-stone-600" />
@@ -179,49 +179,60 @@ const Navbar = () => {
                     </div>
 
                     {/* Desktop: Search Button (No Location) */}
-                    <div className="hidden md:flex flex-1 items-center bg-gray-50 rounded-md border border-gray-200 p-1">
-                        {/* Search Input */}
-                        <form onSubmit={handleSearch} className="flex-1 relative group">
-                            <input
-                                type="text"
-                                value={searchQuery}
-                                onChange={(e) => setSearchQuery(e.target.value)}
-                                placeholder="Search for medicines and health products"
-                                className="w-full bg-transparent border-none focus:ring-0 px-4 py-2 text-sm text-stone-700 placeholder:text-stone-400"
-                            />
-                            <button type="submit" className="absolute right-3 top-1/2 -translate-y-1/2 text-stone-400 group-focus-within:text-stone-600">
-                                <Search className="w-5 h-5" />
-                            </button>
+                    <div className="hidden md:flex flex-1 items-center gap-3">
+                        <div className="flex-1 bg-gray-50 rounded-md border border-gray-200 p-1">
+                            {/* Search Input */}
+                            <form onSubmit={handleSearch} className="relative group">
+                                <input
+                                    type="text"
+                                    value={searchQuery}
+                                    onChange={(e) => setSearchQuery(e.target.value)}
+                                    placeholder="Search for medicines and health products"
+                                    className="w-full bg-transparent border-none focus:ring-0 px-4 py-2 text-sm text-stone-700 placeholder:text-stone-400"
+                                />
+                                <button type="submit" className="absolute right-3 top-1/2 -translate-y-1/2 text-stone-400 group-focus-within:text-stone-600">
+                                    <Search className="w-5 h-5" />
+                                </button>
 
-                            {/* Search Dropdown logic (reuse existing) */}
-                            {searchQuery.length >= 2 && (
-                                <div className="absolute top-full left-0 right-0 mt-2 bg-white rounded-lg shadow-xl border border-gray-100 overflow-hidden z-50 max-h-[60vh] overflow-y-auto">
-                                    {isSearching ? (
-                                        <div className="p-4 text-center text-sm text-stone-500">Searching...</div>
-                                    ) : searchResults.length > 0 ? (
-                                        searchResults.map(prod => (
-                                            <Link
-                                                key={prod.id}
-                                                to={`/product/${prod.id}`}
-                                                onClick={() => setSearchQuery('')}
-                                                className="flex items-center gap-4 px-4 py-3 hover:bg-gray-50 border-b border-gray-50 last:border-0"
-                                            >
-                                                <div className="w-10 h-10 rounded bg-gray-100 overflow-hidden flex-shrink-0">
-                                                    <img src={prod.image} alt="" className="w-full h-full object-cover" />
-                                                </div>
-                                                <div className="flex-1 min-w-0">
-                                                    <p className="text-sm font-medium text-stone-800 truncate">{prod.name}</p>
-                                                    <p className="text-xs text-stone-500">{prod.brand}</p>
-                                                </div>
-                                                <span className="text-sm font-bold text-stone-900">₹{Math.round(prod.disc_price || prod.price)}</span>
-                                            </Link>
-                                        ))
-                                    ) : (
-                                        <div className="p-4 text-center text-sm text-stone-500">No matches found</div>
-                                    )}
-                                </div>
-                            )}
-                        </form>
+                                {/* Search Dropdown logic (reuse existing) */}
+                                {searchQuery.length >= 2 && (
+                                    <div className="absolute top-full left-0 right-0 mt-2 bg-white rounded-lg shadow-xl border border-gray-100 overflow-hidden z-50 max-h-[60vh] overflow-y-auto">
+                                        {isSearching ? (
+                                            <div className="p-4 text-center text-sm text-stone-500">Searching...</div>
+                                        ) : searchResults.length > 0 ? (
+                                            searchResults.map(prod => (
+                                                <Link
+                                                    key={prod.id}
+                                                    to={`/product/${prod.id}`}
+                                                    onClick={() => setSearchQuery('')}
+                                                    className="flex items-center gap-4 px-4 py-3 hover:bg-gray-50 border-b border-gray-50 last:border-0"
+                                                >
+                                                    <div className="w-10 h-10 rounded bg-gray-100 overflow-hidden flex-shrink-0">
+                                                        <img src={prod.image} alt="" className="w-full h-full object-cover" />
+                                                    </div>
+                                                    <div className="flex-1 min-w-0">
+                                                        <p className="text-sm font-medium text-stone-800 truncate">{prod.name}</p>
+                                                        <p className="text-xs text-stone-500">{prod.brand}</p>
+                                                    </div>
+                                                    <span className="text-sm font-bold text-stone-900">₹{Math.round(prod.disc_price || prod.price)}</span>
+                                                </Link>
+                                            ))
+                                        ) : (
+                                            <div className="p-4 text-center text-sm text-stone-500">No matches found</div>
+                                        )}
+                                    </div>
+                                )}
+                            </form>
+                        </div>
+
+                        {/* Camera Icon for Prescription Upload */}
+                        <button
+                            onClick={() => setIsUploadOpen(true)}
+                            className="flex-shrink-0 p-2.5 bg-saffron-500 hover:bg-saffron-600 text-white rounded-md transition-colors shadow-sm group"
+                            title="Upload Prescription"
+                        >
+                            <Camera className="w-5 h-5" />
+                        </button>
                     </div>
 
                     {/* Desktop: Quick Action */}
@@ -433,7 +444,7 @@ const Navbar = () => {
                 isOpen={isUploadOpen}
                 onClose={() => setIsUploadOpen(false)}
             />
-        </header>
+        </header >
     );
 };
 
